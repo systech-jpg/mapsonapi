@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "Bash(git config *)",
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(GIT_SSH_COMMAND=\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new\" git ls-remote origin)",
+      "Bash(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com)",
+      "Bash(gh auth *)",
+      "Bash(git check-ignore *)",
+      "Bash(echo \"name: $\\(git config user.name\\)\")",
+      "Bash(echo \"email: $\\(git config user.email\\)\")",
+      "Bash(echo \"name : $\\(git config --global user.name\\)[kosong seperti semula]\")",
+      "Bash(echo \"email: $\\(git config --global user.email\\)\")",
+      "Bash(echo \"name : $\\(git config --local user.name\\)\")",
+      "Bash(echo \"email: $\\(git config --local user.email\\)\")",
+      "Bash(grep -Ei \"^\\\\.env$|vendor/|chat_secure|\\\\.key$|node_modules\")"
+    ]
+  }
+}

@@ -1,0 +1,793 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
+
+class TindakanController extends Controller
+{
+    /**
+     * Helper mapping status tindakan ke string (label).
+     */
+    private function getStatusLabel($status)
+    {
+        switch ($status) {
+            case 0: return 'Draft';
+            case 1: return 'Confirmed (Need Delivery)';
+            case 2: return 'In Delivery';
+            case 3: return 'Delivered / Ready';
+            case 4: return 'CLOSED / DONE';
+            case 9: return 'Cancelled';
+            default: return 'Unknown';
+        }
+    }
+
+    /**
+     * Menampilkan daftar tindakan yang dibuat hari ini.
+     */
+    public function index(Request $request)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Filter tindakan hari ini berdasarkan tanggal pelaksanaan (bukan tanggal pembuatan)
+        $today = Carbon::today()->toDateString();
+
+        $tindakan = DB::table('llxjp_tindakan as t')
+            ->leftJoin('llxjp_societe as s', 's.rowid', '=', 't.fk_soc')
+            ->leftJoin('llxjp_c_doctor as d', 'd.rowid', '=', 't.dokter')
+            ->select('t.id', 't.ref', 't.status', 't.tanggal', 's.nom as rs_name', 'd.fullname as dokter_name', 't.pasien', 't.ref_sj')
+            ->whereDate('t.tanggal', $today)
+            ->orderBy('t.id', 'desc')
+            ->get();
+
+        // Overwrite nilai 'status' langsung dengan keterangannya
+        $tindakan->transform(function ($item) {
+            $item->status = $this->getStatusLabel($item->status);
+            return $item;
+        });
+
+        return $this->successResponse($tindakan, 'Berhasil mengambil daftar tindakan hari ini.');
+    }
+
+    /**
+     * Mengambil daftar Rumah Sakit / Mitra dengan opsi pencarian (lookup).
+     */
+    public function getHospitals(Request $request)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $search = $request->query('search', '');
+        $limit = $request->query('limit', 50);
+        
+        $query = DB::table('llxjp_societe')
+            ->select('rowid as id', 'name_alias as nom', 'code_client')
+            ->where('client', 1)
+            ->where(function($q) {
+                $q->where('code_client', 'like', 'PH%')
+                  ->orWhere('code_client', 'like', 'GV%');
+            });
+
+        if (!empty($search)) {
+            $query->where(function($q) use ($search) {
+                $q->where('name_alias', 'like', '%' . $search . '%')
+                  ->orWhere('nom', 'like', '%' . $search . '%')
+                  ->orWhere('code_client', 'like', '%' . $search . '%');
+            });
+        }
+
+        $hospitals = $query->orderBy('nom', 'asc')->limit($limit)->get();
+
+        // Format return menjadi label seperti di UI
+        $hospitals->transform(function ($item) {
+            $item->label = $item->nom . ($item->code_client ? ' (' . $item->code_client . ')' : '');
+            return $item;
+        });
+
+        return $this->successResponse($hospitals, 'Berhasil mengambil daftar Rumah Sakit.');
+    }
+
+    /**
+     * Mengambil daftar Dokter Operator dengan opsi pencarian (lookup).
+     */
+    public function getDoctors(Request $request)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $search = $request->query('search', '');
+        $limit = $request->query('limit', 50);
+        
+        $query = DB::table('llxjp_c_doctor')
+            ->select('rowid as id', 'fullname as label');
+
+        if (!empty($search)) {
+            $query->where('fullname', 'like', '%' . $search . '%');
+        }
+
+        $doctors = $query->orderBy('fullname', 'asc')->limit($limit)->get();
+
+        return $this->successResponse($doctors, 'Berhasil mengambil daftar Dokter Operator.');
+    }
+
+    /**
+     * Mengambil daftar TS / PIC Lapangan dengan opsi pencarian (lookup).
+     */
+    public function getTechnicalSupports(Request $request)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $search = $request->query('search', '');
+        $limit = $request->query('limit', 50);
+        
+        $query = DB::table('llxjp_user')
+            ->select('rowid as id', DB::raw("TRIM(CONCAT(firstname, ' ', lastname)) as label"))
+            ->where('job', '1')
+            ->where('statut', 1);
+
+        if (!empty($search)) {
+            $query->where(function($q) use ($search) {
+                $q->where('firstname', 'like', '%' . $search . '%')
+                  ->orWhere('lastname', 'like', '%' . $search . '%');
+            });
+        }
+
+        $technicalSupports = $query->orderBy('firstname', 'asc')->limit($limit)->get();
+
+        return $this->successResponse($technicalSupports, 'Berhasil mengambil daftar TS (PIC Lapangan).');
+    }
+    /**
+     * Membuat jadwal tindakan operasi baru dari mobile (TS).
+     */
+    public function store(Request $request)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'tanggal' => 'required|date',
+            'waktu' => 'nullable|string',
+            'fk_soc' => 'required|integer',
+            'dokter' => 'required|integer',
+            'jenis_tindakan' => 'nullable|string',
+            'fk_ts' => 'required|integer',
+            'pasien' => 'required|string',
+            'pasien_dob' => 'nullable|date',
+            'rencana_alat' => 'required|string', // Sesuai label di UI "Pesanan / Alat"
+            'diagnosa' => 'nullable|string', // Sesuai label di UI "Catatan Lain"
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 400);
+        }
+
+        $validated = $validator->validated();
+
+        try {
+            DB::beginTransaction();
+
+            $tindakanId = DB::table('llxjp_tindakan')->insertGetId([
+                'ref' => '(PROV)', // akan diupdate nanti
+                'entity' => 1,
+                'datec' => Carbon::now(),
+                'fk_user_author' => $user->id,
+                'status' => 0, // Draft
+                'tanggal' => $validated['tanggal'],
+                'waktu' => $validated['waktu'] ?? null,
+                'fk_soc' => $validated['fk_soc'],
+                'dokter' => $validated['dokter'],
+                'pasien' => $validated['pasien'],
+                'pasien_dob' => $validated['pasien_dob'] ?? null,
+                'jenis_tindakan' => $validated['jenis_tindakan'] ?? null,
+                'nama_ts' => $validated['fk_ts'],
+                'rencana_alat' => $validated['rencana_alat'] ?? null,
+                'diagnosa' => $validated['diagnosa'] ?? null,
+            ]);
+
+            // Update ref sesuai pattern
+            DB::table('llxjp_tindakan')
+                ->where('id', $tindakanId)
+                ->update(['ref' => 'TDPROV' . $tindakanId]);
+
+            DB::commit();
+
+            return $this->successResponse(['id' => $tindakanId], 'Berhasil membuat jadwal operasi.', 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse('Terjadi kesalahan: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Memperbarui data jadwal tindakan operasi (update).
+     */
+    public function update(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'tanggal' => 'required|date',
+            'waktu' => 'nullable|string',
+            'fk_soc' => 'required|integer',
+            'dokter' => 'required|integer',
+            'jenis_tindakan' => 'nullable|string',
+            'fk_ts' => 'required|integer',
+            'pasien' => 'required|string',
+            'pasien_dob' => 'nullable|date',
+            'rencana_alat' => 'required|string',
+            'diagnosa' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 400);
+        }
+
+        $validated = $validator->validated();
+
+        try {
+            DB::beginTransaction();
+
+            $tindakan = DB::table('llxjp_tindakan')->where('id', $id)->first();
+            if (!$tindakan) {
+                return $this->errorResponse('Data jadwal tindakan tidak ditemukan.', 404);
+            }
+
+            DB::table('llxjp_tindakan')
+                ->where('id', $id)
+                ->update([
+                    'tanggal' => $validated['tanggal'],
+                    'waktu' => $validated['waktu'] ?? null,
+                    'fk_soc' => $validated['fk_soc'],
+                    'dokter' => $validated['dokter'],
+                    'pasien' => $validated['pasien'],
+                    'pasien_dob' => $validated['pasien_dob'] ?? null,
+                    'jenis_tindakan' => $validated['jenis_tindakan'] ?? null,
+                    'nama_ts' => $validated['fk_ts'],
+                    'rencana_alat' => $validated['rencana_alat'] ?? null,
+                    'diagnosa' => $validated['diagnosa'] ?? null,
+                ]);
+
+            DB::commit();
+
+            return $this->successResponse(['id' => $id], 'Berhasil memperbarui jadwal operasi.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse('Terjadi kesalahan: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Memvalidasi jadwal tindakan operasi.
+     * Mengubah status dari Draft (0) menjadi Validated (1) dan men-generate nomor referensi final.
+     */
+    public function validateTindakan(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $tindakan = DB::table('llxjp_tindakan')->where('id', $id)->first();
+            if (!$tindakan) {
+                return $this->errorResponse('Data jadwal tindakan tidak ditemukan.', 404);
+            }
+
+            if ($tindakan->status != 0) {
+                return $this->errorResponse('Hanya jadwal dengan status Draft yang bisa divalidasi.', 400);
+            }
+
+            $now = Carbon::now();
+            // Format referensi sesuai dengan logic di class Tindakan: TD/ym/0000X
+            $new_ref = 'TD/' . $now->format('ym') . '/' . sprintf('%05d', $id);
+
+            DB::table('llxjp_tindakan')
+                ->where('id', $id)
+                ->update([
+                    'status' => 1,
+                    'fk_user_valid' => $user->id,
+                    'datev' => $now,
+                    'ref' => $new_ref,
+                ]);
+
+            DB::commit();
+
+            return $this->successResponse([
+                'id' => $id,
+                'ref' => $new_ref,
+                'status' => 'Confirmed (Need Delivery)' // label untuk status 1
+            ], 'Berhasil memvalidasi jadwal operasi.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse('Terjadi kesalahan: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Menampilkan detail informasi tindakan beserta Paket Tray dan Set Implant.
+     */
+    public function show(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Ambil data header Tindakan
+        $tindakan = DB::table('llxjp_tindakan as t')
+            ->leftJoin('llxjp_societe as s', 's.rowid', '=', 't.fk_soc')
+            ->leftJoin('llxjp_c_doctor as d', 'd.rowid', '=', 't.dokter')
+            ->leftJoin('llxjp_user as u', 'u.rowid', '=', 't.nama_ts')
+            ->select('t.*', 's.nom as rs_name', 'd.fullname as dokter_name', 'u.firstname as ts_firstname', 'u.lastname as ts_lastname')
+            ->where('t.id', $id)
+            ->first();
+
+        if (!$tindakan) {
+            return $this->errorResponse('Data tindakan tidak ditemukan.', 404);
+        }
+
+        // Overwrite status dengan labelnya
+        $tindakan->status = $this->getStatusLabel($tindakan->status);
+
+        // Ambil Paket Tray
+        $trayKits = DB::table('llxjp_tindakan_kit as k')
+            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'k.fk_product')
+            ->select('k.rowid as kit_id', 'k.qty', 'k.note', 'p.label', 'p.ref')
+            ->where('k.fk_tindakan', $id)
+            ->where('k.jenis', 'tray')
+            ->get();
+
+        foreach ($trayKits as $kit) {
+            $kit->details = DB::table('llxjp_tindakan_kit_det as d')
+                ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'd.fk_product')
+                ->select('d.rowid as detail_id', 'd.qty', 'd.note', 'd.rang', 'p.label', 'p.ref')
+                ->where('d.fk_kit', $kit->kit_id)
+                ->orderBy('d.rang', 'asc')
+                ->orderBy('d.rowid', 'asc')
+                ->get();
+        }
+
+        // Ambil Set Implant
+        $implantKits = DB::table('llxjp_tindakan_kit as k')
+            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'k.fk_product')
+            ->select('k.rowid as kit_id', 'k.qty', 'k.note', 'p.label', 'p.ref')
+            ->where('k.fk_tindakan', $id)
+            ->where('k.jenis', 'implant')
+            ->get();
+
+        foreach ($implantKits as $kit) {
+            $kit->details = DB::table('llxjp_tindakan_kit_det as d')
+                ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'd.fk_product')
+                ->select('d.rowid as detail_id', 'd.qty', 'd.note', 'd.rang', 'p.label', 'p.ref')
+                ->where('d.fk_kit', $kit->kit_id)
+                ->orderBy('d.rang', 'asc')
+                ->orderBy('d.rowid', 'asc')
+                ->get();
+        }
+
+        // Gabungkan response
+        $data = [
+            'info' => $tindakan,
+            'paket_tray' => $trayKits,
+            'set_implant' => $implantKits
+        ];
+
+        return $this->successResponse($data, 'Berhasil mengambil detail tindakan.');
+    }
+
+    /**
+     * Konfirmasi Barang Sampai (Ubah status dari 2 -> 3)
+     */
+    public function confirmArrival(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Cek apakah tindakan ada
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $id)->first();
+
+        if (!$tindakan) {
+            return $this->errorResponse('Data tindakan tidak ditemukan.', 404);
+        }
+
+        // Pastikan statusnya 2 (In Delivery) sebelum bisa dikonfirmasi sampai
+        if ($tindakan->status != 2) {
+            return $this->errorResponse('Tindakan ini tidak dalam status In Delivery.', 400);
+        }
+
+        // Update status menjadi 3 (Delivered / Ready)
+        DB::table('llxjp_tindakan')->where('id', $id)->update([
+            'status' => 3
+        ]);
+
+        return $this->successResponse(null, 'Barang dikonfirmasi sampai di RS (Ready).');
+    }
+
+    /**
+     * Helper: Mendapatkan Usage Report, atau otomatis men-generate jika belum ada (Auto-Create).
+     */
+    private function getOrCreateUsageReport($tindakan, $user = null)
+    {
+        if (!empty($tindakan->fk_usage)) {
+            $usage = DB::table('llxjp_usage_report')->where('rowid', $tindakan->fk_usage)->first();
+            if ($usage) return $usage;
+        }
+
+        // Cek fallback (jika ada tapi fk_usage di tindakan belum terupdate)
+        $usage = DB::table('llxjp_usage_report')->where('fk_tindakan', $tindakan->id)->first();
+        if ($usage) {
+            DB::table('llxjp_tindakan')->where('id', $tindakan->id)->update(['fk_usage' => $usage->rowid]);
+            return $usage;
+        }
+
+        // GENERATE BARU
+        // Cari nomor ref terakhir
+        $prefix = 'PRMM/' . date('y/m') . '/';
+        $lastUsage = DB::table('llxjp_usage_report')->where('ref', 'like', $prefix . '%')->orderBy('ref', 'desc')->first();
+        $new_num = 1;
+        if ($lastUsage) {
+            $last_num = (int) substr($lastUsage->ref, -5);
+            $new_num = $last_num + 1;
+        }
+        $new_ref = $prefix . sprintf("%05d", $new_num);
+
+        // Buat record Usage Report
+        $usageId = DB::table('llxjp_usage_report')->insertGetId([
+            'ref' => $new_ref,
+            'fk_tindakan' => $tindakan->id,
+            'fk_soc' => $tindakan->fk_soc,
+            'date_creation' => \Carbon\Carbon::now(),
+            'fk_user_author' => $user ? $user->id : 1,
+            'status' => 0
+        ]);
+
+        // Hitung ulang qty produk (gabungan implant & tray jika diperlukan, atau seluruh kit)
+        $new_items = DB::table('llxjp_tindakan_kit_det as d')
+            ->join('llxjp_tindakan_kit as k', 'k.rowid', '=', 'd.fk_kit')
+            ->where('k.fk_tindakan', $tindakan->id)
+            ->groupBy('d.fk_product')
+            ->select('d.fk_product', DB::raw('SUM(d.qty) as total_qty'))
+            ->get();
+
+        foreach ($new_items as $item) {
+            DB::table('llxjp_usage_report_det')->insert([
+                'fk_usage_report' => $usageId,
+                'fk_product' => $item->fk_product,
+                'qty_sent' => $item->total_qty,
+                'qty_used' => 0
+            ]);
+        }
+
+        // Update fk_usage pada tindakan
+        DB::table('llxjp_tindakan')->where('id', $tindakan->id)->update(['fk_usage' => $usageId]);
+
+        return DB::table('llxjp_usage_report')->where('rowid', $usageId)->first();
+    }
+
+    /**
+     * Menampilkan data Usage Report (Pemakaian) berdasarkan ID Tindakan.
+     */
+    public function getUsage(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Cari Tindakan
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        // Dapatkan atau Generate Usage Report
+        $usage = $this->getOrCreateUsageReport($tindakan, $user);
+
+        $usage = DB::table('llxjp_usage_report as u')
+            ->leftJoin('llxjp_tindakan as t', 't.fk_usage', '=', 'u.rowid')
+            ->leftJoin('llxjp_societe as s', 's.rowid', '=', 'u.fk_soc')
+            ->select('u.*', 't.ref as tindakan_ref', 's.nom as rs_name')
+            ->where('u.rowid', $usage->rowid)
+            ->first();
+
+        // Mapping status
+        if ($usage->status == 0) $usage->status_label = 'Draft';
+        elseif ($usage->status == 1) $usage->status_label = 'Validated';
+        elseif ($usage->status == 2) $usage->status_label = 'Ordered (SO Created)';
+        else $usage->status_label = 'Unknown';
+
+        // Untuk menyamakan struktur dengan mobile (yang punya paket_tray & set_implant),
+        // Kita set paket_tray kosong (karena Tray tidak masuk usage report sesuai aturan web)
+        $trayKits = [];
+
+        // Ambil Set Implant dan join dengan detail dari usage_report_det
+        $implantKits = DB::table('llxjp_tindakan_kit as k')
+            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'k.fk_product')
+            ->select('k.rowid as kit_id', 'k.qty', 'k.note', 'p.label', 'p.ref')
+            ->where('k.fk_tindakan', $id)
+            ->where('k.jenis', 'implant')
+            ->get();
+
+        foreach ($implantKits as $kit) {
+            $kit->details = DB::table('llxjp_tindakan_kit_det as d')
+                ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'd.fk_product')
+                ->join('llxjp_usage_report_det as u', function($join) use ($usage) {
+                     $join->on('u.fk_product', '=', 'd.fk_product')
+                          ->where('u.fk_usage_report', '=', $usage->rowid);
+                })
+                ->select(
+                    'u.rowid as det_id',
+                    'u.fk_product',
+                    'u.qty_sent',
+                    'u.qty_used',
+                    DB::raw('(u.qty_sent - u.qty_used) as qty_return'),
+                    'p.ref as product_ref',
+                    'p.label as product_label'
+                )
+                ->where('d.fk_kit', $kit->kit_id)
+                ->orderBy('d.rang', 'asc')
+                ->orderBy('d.rowid', 'asc')
+                ->get();
+        }
+
+        $data = [
+            'info' => $usage,
+            'paket_tray' => $trayKits,
+            'set_implant' => $implantKits
+        ];
+
+        return $this->successResponse($data, 'Berhasil mengambil data Usage Report.');
+    }
+
+    /**
+     * Menyimpan (Save Draft) Qty Terpakai (Used) pada Usage Report.
+     */
+    public function saveUsageLines(Request $request, $tindakan_id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Cek Tindakan
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $usage = $this->getOrCreateUsageReport($tindakan, $user);
+
+        if ($usage->status != 0) {
+            return $this->errorResponse('Gagal menyimpan: Usage Report tidak dalam status Draft.', 400);
+        }
+
+        // Validasi input
+        $request->validate([
+            'lines' => 'required|array',
+            'lines.*.det_id' => 'required|integer',
+            'lines.*.qty_used' => 'required|integer|min:0'
+        ]);
+
+        DB::beginTransaction();
+        try {
+            foreach ($request->lines as $line) {
+                // Update ke database
+                DB::table('llxjp_usage_report_det')
+                    ->where('rowid', $line['det_id'])
+                    ->where('fk_usage_report', $usage->rowid)
+                    ->update([
+                        'qty_used' => $line['qty_used']
+                    ]);
+            }
+            DB::commit();
+
+            return $this->successResponse(null, 'Data pemakaian (Qty Used) berhasil disimpan sebagai Draft.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse('Terjadi kesalahan saat menyimpan data: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Memvalidasi Usage Report (Status menjadi 1 - Validated).
+     */
+    public function validateUsage(Request $request, $tindakan_id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+        
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Cek Tindakan
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $usage = $this->getOrCreateUsageReport($tindakan, $user);
+
+        if ($usage->status != 0) {
+            return $this->errorResponse('Gagal validasi: Usage Report harus dalam status Draft.', 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            DB::table('llxjp_usage_report')
+                ->where('rowid', $usage->rowid)
+                ->update([
+                    'status' => 1,
+                    'fk_user_valid' => $user->rowid,
+                    'datev' => \Carbon\Carbon::now()
+                ]);
+
+            DB::commit();
+
+            return $this->successResponse([
+                'ref' => $usage->ref,
+                'status' => 1
+            ], 'Data Laporan Pemakaian berhasil divalidasi (Final).');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse('Terjadi kesalahan saat validasi data: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Tarik Barang Usage Report (Status 1 -> 4).
+     */
+    public function tarikBarang(Request $request, $tindakan_id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+        
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Cek Tindakan
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $usage = $this->getOrCreateUsageReport($tindakan, $user);
+
+        if ($usage->status != 1) {
+            return $this->errorResponse('Gagal Tarik Barang: Usage Report harus dalam status Validated.', 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            DB::table('llxjp_usage_report')
+                ->where('rowid', $usage->rowid)
+                ->update([
+                    'status' => 4, // 4 = Tarik Barang
+                    'fk_user_tarik' => $user->rowid,
+                    'date_tarik' => \Carbon\Carbon::now()
+                ]);
+
+            DB::commit();
+
+            return $this->successResponse([
+                'ref' => $usage->ref,
+                'status' => 4
+            ], 'Barang berhasil ditarik (Tarik Barang).');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse('Terjadi kesalahan saat proses Tarik Barang: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Download PDF Surat Jalan (Hanya jika Usage Report sudah divalidasi)
+     */
+    public function downloadSuratJalan(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        // Cek apakah Usage Report sudah divalidasi (bukan Draft / status > 0)
+        $usage = DB::table('llxjp_usage_report')->where('fk_tindakan', $id)->orderBy('rowid', 'desc')->first();
+        if (!$usage || $usage->status == 0) {
+            return $this->errorResponse('Surat Jalan hanya bisa didownload jika Laporan Pemakaian (Usage Report) sudah divalidasi (Final).', 403);
+        }
+
+        // Ambil data header Tindakan
+        $tindakan = DB::table('llxjp_tindakan as t')
+            ->leftJoin('llxjp_societe as s', 's.rowid', '=', 't.fk_soc')
+            ->leftJoin('llxjp_c_doctor as d', 'd.rowid', '=', 't.dokter')
+            ->select('t.*', 's.nom as rs_name', 's.name_alias', 's.address as alamat', 'd.fullname as dokter_name')
+            ->where('t.id', $id)
+            ->first();
+
+        if (!$tindakan) {
+            return $this->errorResponse('Data tindakan tidak ditemukan.', 404);
+        }
+
+        // Pastikan Surat Jalan sudah ter-create (status >= 2)
+        if ($tindakan->status < 2) {
+            return $this->errorResponse('Surat Jalan belum diterbitkan (Status belum In Delivery).', 400);
+        }
+
+        // Ambil Paket Tray
+        $paket_tray = DB::table('llxjp_tindakan_kit as k')
+            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'k.fk_product')
+            ->select('k.rowid as kit_id', 'k.qty', 'k.note', 'p.label', 'p.ref')
+            ->where('k.fk_tindakan', $id)
+            ->where('k.jenis', 'tray')
+            ->get();
+
+        // Ambil Set Implant (Beserta Detailnya dan Qty Used)
+        $set_implant = DB::table('llxjp_tindakan_kit_det as d')
+            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'd.fk_product')
+            ->leftJoin('llxjp_tindakan_kit as k', 'k.rowid', '=', 'd.fk_kit')
+            ->leftJoin('llxjp_product_extrafields as pe', 'pe.fk_object', '=', 'p.rowid')
+            ->leftJoin('llxjp_usage_report_det as u', function($join) use ($usage) {
+                 $join->on('u.fk_product', '=', 'd.fk_product')
+                      ->where('u.fk_usage_report', '=', $usage->rowid);
+            })
+            ->select('d.qty', 'd.note', 'p.label', 'p.ref', 'p.rowid as prodid', 'pe.noakl', 'u.qty_used')
+            ->where('k.fk_tindakan', $id)
+            ->where('k.jenis', 'implant')
+            ->orderBy('k.rowid', 'asc')
+            ->orderBy('d.rang', 'asc')
+            ->orderBy('d.rowid', 'asc')
+            ->get();
+
+        // Hitung Grand Total
+        $grand_total = 0;
+        foreach ($paket_tray as $item) $grand_total += $item->qty;
+        foreach ($set_implant as $item) $grand_total += $item->qty;
+
+        $data = [
+            'info' => $tindakan,
+            'paket_tray' => $paket_tray,
+            'set_implant' => $set_implant,
+            'grand_total' => $grand_total
+        ];
+
+        // Generate PDF
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.surat_jalan', $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        $filename = 'Surat-Jalan-' . str_replace('/', '-', $tindakan->ref_sj) . '.pdf';
+        
+        return $pdf->download($filename);
+    }
+}
