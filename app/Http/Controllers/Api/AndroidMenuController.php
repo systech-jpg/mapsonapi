@@ -127,9 +127,18 @@ class AndroidMenuController extends Controller
             Log::warning('Ikon menu tidak ditemukan', [
                 'file' => basename($filename),
                 'directory' => $directory,
+                'directory_exists' => is_dir($directory),
             ]);
 
-            abort(404, 'Image not found');
+            // Sengaja tidak memakai abort(404): handler NotFoundHttpException
+            // di bootstrap/app.php akan menimpanya dengan "Route atau Endpoint
+            // tidak terdaftar", sehingga file hilang tidak bisa dibedakan dari
+            // salah URL saat menelusuri masalah.
+            return response()->json([
+                'success' => false,
+                'message' => 'Ikon tidak ditemukan: ' . basename($filename),
+                'directory_exists' => is_dir($directory),
+            ], 404);
         }
 
         return response()->file($path, [
