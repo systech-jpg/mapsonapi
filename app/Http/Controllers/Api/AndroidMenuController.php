@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\AndroidMenu;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AndroidMenuController extends Controller
 {
@@ -111,13 +112,28 @@ class AndroidMenuController extends Controller
 
     /**
      * Serve image icons from mapsonerp folder to bypass domain/ngrok issues
+     *
+     * Direktori sumbernya diatur lewat ANDROID_ICONS_PATH di .env karena
+     * berbeda antara mesin development dan server.
      */
     public function serveIcon($filename)
     {
-        $path = 'C:/Users/USER/Herd/mapsonerp/public/android_icons/' . basename($filename);
+        $directory = rtrim((string) config('android.icons_path'), '/\\');
+        $path = $directory . DIRECTORY_SEPARATOR . basename($filename);
+
         if (!file_exists($path)) {
+            // Di-log supaya ikon yang hilang tidak cuma tampak sebagai gambar
+            // kosong di Android, tanpa jejak apa pun di server.
+            Log::warning('Ikon menu tidak ditemukan', [
+                'file' => basename($filename),
+                'directory' => $directory,
+            ]);
+
             abort(404, 'Image not found');
         }
-        return response()->file($path);
+
+        return response()->file($path, [
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
     }
 }
