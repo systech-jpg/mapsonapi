@@ -549,6 +549,52 @@ class TindakanController extends Controller
     }
 
     /**
+     * Mengambil kit beserta barisnya untuk Usage Report.
+     *
+     * Detail-nya sengaja diambil dari llxjp_usage_report_det, bukan dari
+     * llxjp_tindakan_kit_det, supaya det_id yang dikirim ke client adalah id
+     * baris usage report -- id yang sama yang dipakai saveUsageLines() untuk
+     * mencari baris saat menyimpan qty_used.
+     *
+     * @param  int    $tindakanId
+     * @param  string $jenis     'tray' atau 'implant'
+     * @param  int    $usageId   rowid llxjp_usage_report
+     */
+    private function buildUsageKits($tindakanId, $jenis, $usageId)
+    {
+        $kits = DB::table('llxjp_tindakan_kit as k')
+            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'k.fk_product')
+            ->select('k.rowid as kit_id', 'k.qty', 'k.note', 'p.label', 'p.ref')
+            ->where('k.fk_tindakan', $tindakanId)
+            ->where('k.jenis', $jenis)
+            ->get();
+
+        foreach ($kits as $kit) {
+            $kit->details = DB::table('llxjp_tindakan_kit_det as d')
+                ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'd.fk_product')
+                ->join('llxjp_usage_report_det as u', function ($join) use ($usageId) {
+                    $join->on('u.fk_product', '=', 'd.fk_product')
+                         ->where('u.fk_usage_report', '=', $usageId);
+                })
+                ->select(
+                    'u.rowid as det_id',
+                    'u.fk_product',
+                    'u.qty_sent',
+                    'u.qty_used',
+                    DB::raw('(u.qty_sent - u.qty_used) as qty_return'),
+                    'p.ref as product_ref',
+                    'p.label as product_label'
+                )
+                ->where('d.fk_kit', $kit->kit_id)
+                ->orderBy('d.rang', 'asc')
+                ->orderBy('d.rowid', 'asc')
+                ->get();
+        }
+
+        return $kits;
+    }
+
+    /**
      * Menampilkan data Usage Report (Pemakaian) berdasarkan ID Tindakan.
      */
     public function getUsage(Request $request, $id)
@@ -581,39 +627,14 @@ class TindakanController extends Controller
         elseif ($usage->status == 2) $usage->status_label = 'Ordered (SO Created)';
         else $usage->status_label = 'Unknown';
 
-        // Untuk menyamakan struktur dengan mobile (yang punya paket_tray & set_implant),
-        // Kita set paket_tray kosong (karena Tray tidak masuk usage report sesuai aturan web)
-        $trayKits = [];
-
-        // Ambil Set Implant dan join dengan detail dari usage_report_det
-        $implantKits = DB::table('llxjp_tindakan_kit as k')
-            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'k.fk_product')
-            ->select('k.rowid as kit_id', 'k.qty', 'k.note', 'p.label', 'p.ref')
-            ->where('k.fk_tindakan', $id)
-            ->where('k.jenis', 'implant')
-            ->get();
-
-        foreach ($implantKits as $kit) {
-            $kit->details = DB::table('llxjp_tindakan_kit_det as d')
-                ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'd.fk_product')
-                ->join('llxjp_usage_report_det as u', function($join) use ($usage) {
-                     $join->on('u.fk_product', '=', 'd.fk_product')
-                          ->where('u.fk_usage_report', '=', $usage->rowid);
-                })
-                ->select(
-                    'u.rowid as det_id',
-                    'u.fk_product',
-                    'u.qty_sent',
-                    'u.qty_used',
-                    DB::raw('(u.qty_sent - u.qty_used) as qty_return'),
-                    'p.ref as product_ref',
-                    'p.label as product_label'
-                )
-                ->where('d.fk_kit', $kit->kit_id)
-                ->orderBy('d.rang', 'asc')
-                ->orderBy('d.rowid', 'asc')
-                ->get();
-        }
+        // Paket Tray IKUT ditampilkan. getOrCreateUsageReport() menyalin produk
+        // dari SELURUH kit tanpa memfilter jenis, jadi baris tray memang ada di
+        // llxjp_usage_report_det dan tampil di halaman ERP. Sebelumnya bagian ini
+        // dikosongkan paksa, sehingga mobile tidak pernah menerima det_id milik
+        // baris tray -- akibatnya Simpan Draft mengirim id dari tabel lain dan
+        // tidak ada satu baris pun yang terupdate.
+        $trayKits = $this->buildUsageKits($id, 'tray', $usage->rowid);
+        $implantKits = $this->buildUsageKits($id, 'implant', $usage->rowid);
 
         $data = [
             'info' => $usage,
@@ -635,8 +656,17 @@ class TindakanController extends Controller
             return $this->errorResponse('User tidak terautentikasi.', 401);
         }
 
-        // Cek Tindakan
+        // Coba cari sebagai tindakan_id dulu
         $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
+        
+        // Jika tidak ketemu, mungkin mobile mengirim usage_report.rowid ke parameter ini
+        if (!$tindakan) {
+            $usageCheck = DB::table('llxjp_usage_report')->where('rowid', $tindakan_id)->first();
+            if ($usageCheck && $usageCheck->fk_tindakan) {
+                $tindakan = DB::table('llxjp_tindakan')->where('id', $usageCheck->fk_tindakan)->first();
+            }
+        }
+
         if (!$tindakan) {
             return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
         }
@@ -647,27 +677,57 @@ class TindakanController extends Controller
             return $this->errorResponse('Gagal menyimpan: Usage Report tidak dalam status Draft.', 400);
         }
 
-        // Validasi input
-        $request->validate([
-            'lines' => 'required|array',
-            'lines.*.det_id' => 'required|integer',
-            'lines.*.qty_used' => 'required|integer|min:0'
-        ]);
+        // Handle format payload dari mobile (bisa {lines: [...]} atau langsung [...])
+        $lines = $request->input('lines');
+        if (empty($lines) && is_array($request->all()) && isset($request->all()[0])) {
+            $lines = $request->all(); // Fallback jika mobile kirim array mentah
+        }
+
+        if (empty($lines) || !is_array($lines)) {
+            return $this->errorResponse('Format data lines tidak valid atau kosong.', 400);
+        }
 
         DB::beginTransaction();
         try {
-            foreach ($request->lines as $line) {
-                // Update ke database
-                DB::table('llxjp_usage_report_det')
-                    ->where('rowid', $line['det_id'])
-                    ->where('fk_usage_report', $usage->rowid)
-                    ->update([
-                        'qty_used' => $line['qty_used']
-                    ]);
+            $updatedCount = 0;
+            foreach ($lines as $line) {
+                $qty_used = $line['qty_used'] ?? $line['qty'] ?? $line['used'] ?? null;
+                if ($qty_used === null || $qty_used === '') continue; // Skip if no qty provided
+
+                $query = DB::table('llxjp_usage_report_det')
+                    ->where('fk_usage_report', $usage->rowid);
+
+                if (!empty($line['det_id'])) {
+                    $query->where('rowid', $line['det_id']);
+                } elseif (!empty($line['fk_product'])) {
+                    $query->where('fk_product', $line['fk_product']);
+                } elseif (!empty($line['product_id'])) {
+                    $query->where('fk_product', $line['product_id']);
+                } else {
+                    continue; // No identifier
+                }
+
+                $affected = $query->update([
+                    'qty_used' => (int) $qty_used
+                ]);
+                
+                if ($affected) $updatedCount++;
             }
+            // Tidak ada satu baris pun yang cocok berarti identifier yang dikirim
+            // client tidak dikenali di usage report ini. Dulu kondisi ini tetap
+            // dijawab sukses, sehingga user melihat "berhasil disimpan" padahal
+            // tidak ada yang tersimpan dan baru ketahuan dari halaman ERP.
+            if ($updatedCount === 0) {
+                DB::rollBack();
+                return $this->errorResponse(
+                    'Tidak ada baris yang cocok di Usage Report ini. Pastikan det_id atau product_id yang dikirim benar.',
+                    422
+                );
+            }
+
             DB::commit();
 
-            return $this->successResponse(null, 'Data pemakaian (Qty Used) berhasil disimpan sebagai Draft.');
+            return $this->successResponse(['updated' => $updatedCount], 'Data pemakaian (Qty Used) berhasil disimpan sebagai Draft.');
         } catch (\Exception $e) {
             DB::rollBack();
             return $this->errorResponse('Terjadi kesalahan saat menyimpan data: ' . $e->getMessage(), 500);
