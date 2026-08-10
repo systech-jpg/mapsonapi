@@ -3,15 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Traits\LogsTindakanActivity;
+use App\Traits\LogsDolibarrActivity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class TindakanController extends Controller
 {
-    use LogsTindakanActivity;
-
+    use LogsDolibarrActivity;
 
     /**
      * Helper mapping status tindakan ke string (label).

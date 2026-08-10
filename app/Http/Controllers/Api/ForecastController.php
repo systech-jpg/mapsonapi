@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\LogsDolibarrActivity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class ForecastController extends Controller
 {
+    use LogsDolibarrActivity;
+
     /**
      * GET /api/forecast/principals
      * Mendapatkan daftar Principal (vendor).
@@ -97,6 +100,13 @@ class ForecastController extends Controller
             $this->generateSnapshot($forecast_id, $fk_principal, $forecast_month, $date_forecast);
 
             DB::commit();
+
+            // Snapshot ikut dicatat terpisah: di ERP itu tombol sendiri
+            // ("1. TARIK DATA SNAPSHOT"), sedangkan di mobile dijalankan
+            // otomatis saat dokumen dibuat. Riwayat harus tetap menunjukkan
+            // kedua kejadian itu supaya sebanding dengan alur web.
+            $this->logForecastActivity($forecast_id, 'CREATE', $user, $ref, 0);
+            $this->logForecastActivity($forecast_id, 'SNAPSHOT', $user, 'Otomatis saat dibuat dari mobile', 0);
 
             return $this->successResponse([
                 'id' => $forecast_id,
@@ -403,6 +413,8 @@ class ForecastController extends Controller
                 'qty_forecast' => 0
             ];
 
+            $this->logForecastActivity($id, 'PRODUCT_ADD', $user, 'Produk #'.$product_id.' ('.$obj_prod->ref.')', 0);
+
             return $this->successResponse($responseData, 'Berhasil menambahkan produk ke forecast.');
         } catch (\Exception $e) {
             return $this->errorResponse('Terjadi kesalahan: ' . $e->getMessage(), 500);
@@ -476,6 +488,18 @@ class ForecastController extends Controller
             }
 
             DB::commit();
+
+            $this->logForecastActivity(
+                $id,
+                'SAVE_LINE',
+                $user,
+                count($request->items).' produk disimpan dari mobile',
+                $request->validate ? 1 : 0
+            );
+
+            if ($request->validate) {
+                $this->logForecastActivity($id, 'VALIDATE', $user, 'Divalidasi dari aplikasi mobile', 1);
+            }
 
             return $this->successResponse(null, $message);
         } catch (\Exception $e) {

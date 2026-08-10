@@ -20,13 +20,14 @@ use Carbon\Carbon;
  * sengaja TIDAK ikut membuat tabel: DDL memicu implicit commit di MySQL dan
  * akan menutup transaksi pemanggil lebih awal tanpa disadari.
  */
-trait LogsTindakanActivity
+trait LogsDolibarrActivity
 {
     /** Asal aksi. Nilainya harus sama persis dengan konstanta di sisi ERP. */
     private const LOG_SOURCE_MOBILE = 'MOBILE';
 
     private const TINDAKAN_LOG_TABLE = 'llxjp_tindakan_activity_log';
     private const USAGE_LOG_TABLE    = 'llxjp_usage_report_log';
+    private const FORECAST_LOG_TABLE = 'llxjp_forecast_activity_log';
 
     /**
      * Waktu sekarang dalam konvensi penyimpanan Dolibarr: UTC.
@@ -68,6 +69,17 @@ trait LogsTindakanActivity
     protected function logUsageActivity($usageId, $action, $user = null, $note = '', $statusAfter = null)
     {
         $this->writeActivityLog(self::USAGE_LOG_TABLE, 'fk_usage_report', $usageId, $action, $user, $note, $statusAfter);
+    }
+
+    /**
+     * Mencatat satu kejadian pada dokumen Forecast.
+     *
+     * @param int    $forecastId
+     * @param string $action  CREATE|SAVE_LINE|PRODUCT_ADD|... (lihat Forecast::getLogActionLabel)
+     */
+    protected function logForecastActivity($forecastId, $action, $user = null, $note = '', $statusAfter = null)
+    {
+        $this->writeActivityLog(self::FORECAST_LOG_TABLE, 'fk_forecast', $forecastId, $action, $user, $note, $statusAfter);
     }
 
     /**
