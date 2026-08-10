@@ -82,8 +82,14 @@ class ForecastController extends Controller
                 'fk_principal' => $fk_principal,
                 'forecast_month' => $forecast_month,
                 'date_forecast' => $date_forecast->toDateString(),
-                'datec' => Carbon::now()->toDateTimeString(),
-                'fk_user_creat' => $user->id,
+                // UTC, mengikuti konvensi penyimpanan Dolibarr. Carbon::now()
+                // memakai Asia/Jakarta (config/app.php) dan akan tersimpan 7 jam
+                // lebih maju daripada baris yang ditulis ERP.
+                'datec' => Carbon::now('UTC')->toDateTimeString(),
+                // PK llxjp_user adalah rowid; tidak ada kolom id. $user->id
+                // mengembalikan NULL diam-diam, sehingga dokumen forecast dari
+                // mobile tersimpan tanpa pembuat.
+                'fk_user_creat' => $user->rowid,
                 'status' => 0 // Draft
             ]);
 

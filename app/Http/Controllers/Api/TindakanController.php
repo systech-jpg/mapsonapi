@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\LogsTindakanActivity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class TindakanController extends Controller
 {
+    use LogsTindakanActivity;
+
+
     /**
      * Helper mapping status tindakan ke string (label).
      */
@@ -21,6 +25,26 @@ class TindakanController extends Controller
             case 3: return 'Delivered / Ready';
             case 4: return 'CLOSED / DONE';
             case 9: return 'Cancelled';
+            default: return 'Unknown';
+        }
+    }
+
+    /**
+     * Label status Usage Report.
+     *
+     * Nilainya HARUS sama persis dengan badge di custom/tindakanmedis/usage.php,
+     * supaya status yang dilihat TS di mobile identik dengan yang dilihat admin
+     * di ERP. Perhatikan urutannya tidak berurutan: 4 disisipkan di antara 1 dan
+     * 2, dan itu memang skema di database -- jangan "dirapikan".
+     */
+    private function getUsageStatusLabel($status)
+    {
+        switch ((int) $status) {
+            case 0: return 'Draft';
+            case 1: return 'Validated (Menunggu Tarik Barang)';
+            case 4: return 'Barang Ditarik (Menunggu Accept)';
+            case 2: return 'Accepted (Warehouse)';
+            case 3: return 'Ordered (SO Created)';
             default: return 'Unknown';
         }
     }
@@ -71,7 +95,17 @@ class TindakanController extends Controller
         $paginator = DB::table('llxjp_tindakan as t')
             ->leftJoin('llxjp_societe as s', 's.rowid', '=', 't.fk_soc')
             ->leftJoin('llxjp_c_doctor as d', 'd.rowid', '=', 't.dokter')
-            ->select('t.id', 't.ref', 't.status', 't.tanggal', 's.nom as rs_name', 'd.fullname as dokter_name', 't.pasien', 't.ref_sj')
+            // Status usage report ikut dibawa supaya daftar di mobile bisa
+            // menampilkan tahapan yang sama dengan halaman usage di ERP.
+            // Selama usage report belum dibuat, kolom ini null dan klien
+            // menampilkan status tindakan seperti sebelumnya.
+            ->leftJoin('llxjp_usage_report as ur', 'ur.fk_tindakan', '=', 't.id')
+            ->select(
+                't.id', 't.ref', 't.status', 't.tanggal',
+                's.nom as rs_name', 'd.fullname as dokter_name',
+                't.pasien', 't.ref_sj',
+                'ur.status as usage_status'
+            )
             ->whereBetween('t.tanggal', [$awalBulan, $akhirBulan])
             // Tanpa filter status: Draft s/d Cancelled semuanya ikut tampil.
             ->orderBy('t.tanggal', 'desc')
@@ -81,6 +115,11 @@ class TindakanController extends Controller
         // Overwrite nilai 'status' langsung dengan keterangannya
         $paginator->getCollection()->transform(function ($item) {
             $item->status = $this->getStatusLabel($item->status);
+
+            $item->usage_status_label = is_null($item->usage_status)
+                ? null
+                : $this->getUsageStatusLabel($item->usage_status);
+
             return $item;
         });
 
@@ -242,8 +281,11 @@ class TindakanController extends Controller
             $tindakanId = DB::table('llxjp_tindakan')->insertGetId([
                 'ref' => '(PROV)', // akan diupdate nanti
                 'entity' => 1,
-                'datec' => Carbon::now(),
-                'fk_user_author' => $user->id,
+                'datec' => $this->dolibarrNow(),
+                // PK llxjp_user adalah rowid. $user->id di sini menghasilkan
+                // NULL diam-diam, sehingga jadwal buatan mobile tampil tanpa
+                // pembuat di ERP (dan jatuh ke fallback "SuperAdmin").
+                'fk_user_author' => $user->rowid,
                 'status' => 0, // Draft
                 'tanggal' => $validated['tanggal'],
                 'waktu' => $validated['waktu'] ?? null,
@@ -263,6 +305,8 @@ class TindakanController extends Controller
                 ->update(['ref' => 'TDPROV' . $tindakanId]);
 
             DB::commit();
+
+            $this->logTindakanActivity($tindakanId, 'CREATE', $user, 'Dibuat dari aplikasi mobile', 0);
 
             return $this->successResponse(['id' => $tindakanId], 'Berhasil membuat jadwal operasi.', 201);
         } catch (\Exception $e) {
@@ -326,6 +370,8 @@ class TindakanController extends Controller
 
             DB::commit();
 
+            $this->logTindakanActivity($id, 'UPDATE', $user, 'Diubah dari aplikasi mobile', $tindakan->status);
+
             return $this->successResponse(['id' => $id], 'Berhasil memperbarui jadwal operasi.');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -357,7 +403,7 @@ class TindakanController extends Controller
                 return $this->errorResponse('Hanya jadwal dengan status Draft yang bisa divalidasi.', 400);
             }
 
-            $now = Carbon::now();
+            $now = $this->dolibarrNow();
             // Format referensi sesuai dengan logic di class Tindakan: TD/ym/0000X
             $new_ref = 'TD/' . $now->format('ym') . '/' . sprintf('%05d', $id);
 
@@ -365,12 +411,15 @@ class TindakanController extends Controller
                 ->where('id', $id)
                 ->update([
                     'status' => 1,
-                    'fk_user_valid' => $user->id,
+                    // rowid, bukan id — lihat catatan di store().
+                    'fk_user_valid' => $user->rowid,
                     'datev' => $now,
                     'ref' => $new_ref,
                 ]);
 
             DB::commit();
+
+            $this->logTindakanActivity($id, 'VALIDATE', $user, 'Ref menjadi '.$new_ref, 1);
 
             return $this->successResponse([
                 'id' => $id,
@@ -479,10 +528,25 @@ class TindakanController extends Controller
             return $this->errorResponse('Tindakan ini tidak dalam status In Delivery.', 400);
         }
 
-        // Update status menjadi 3 (Delivered / Ready)
-        DB::table('llxjp_tindakan')->where('id', $id)->update([
-            'status' => 3
-        ]);
+        // Update status menjadi 3 (Delivered / Ready).
+        // fk_user_arrival / date_arrival ikut diisi supaya halaman Info di ERP
+        // menampilkan siapa yang mengonfirmasi — set_delivered() di sisi web
+        // mengisi kolom yang sama. Kedua kolom itu ditambahkan belakangan lewat
+        // self-heal ALTER di ERP, jadi kalau instalasi belum punya kolomnya
+        // konfirmasi tetap diteruskan tanpa atribusi, bukan gagal.
+        try {
+            DB::table('llxjp_tindakan')->where('id', $id)->update([
+                'status' => 3,
+                'fk_user_arrival' => $user->rowid,
+                'date_arrival' => $this->dolibarrNow(),
+            ]);
+        } catch (\Exception $e) {
+            DB::table('llxjp_tindakan')->where('id', $id)->update([
+                'status' => 3
+            ]);
+        }
+
+        $this->logTindakanActivity($id, 'ARRIVAL', $user, 'Dikonfirmasi dari aplikasi mobile', 3);
 
         return $this->successResponse(null, 'Barang dikonfirmasi sampai di RS (Ready).');
     }
@@ -520,10 +584,13 @@ class TindakanController extends Controller
             'ref' => $new_ref,
             'fk_tindakan' => $tindakan->id,
             'fk_soc' => $tindakan->fk_soc,
-            'date_creation' => \Carbon\Carbon::now(),
-            'fk_user_author' => $user ? $user->id : 1,
+            'date_creation' => $this->dolibarrNow(),
+            // rowid, bukan id — lihat catatan di store().
+            'fk_user_author' => ($user && $user->rowid) ? $user->rowid : 1,
             'status' => 0
         ]);
+
+        $this->logUsageActivity($usageId, 'CREATE', $user, 'Dibuat otomatis dari aplikasi mobile', 0);
 
         // Hitung ulang qty produk (gabungan implant & tray jika diperlukan, atau seluruh kit)
         $new_items = DB::table('llxjp_tindakan_kit_det as d')
@@ -621,11 +688,7 @@ class TindakanController extends Controller
             ->where('u.rowid', $usage->rowid)
             ->first();
 
-        // Mapping status
-        if ($usage->status == 0) $usage->status_label = 'Draft';
-        elseif ($usage->status == 1) $usage->status_label = 'Validated';
-        elseif ($usage->status == 2) $usage->status_label = 'Ordered (SO Created)';
-        else $usage->status_label = 'Unknown';
+        $usage->status_label = $this->getUsageStatusLabel($usage->status);
 
         // Paket Tray IKUT ditampilkan. getOrCreateUsageReport() menyalin produk
         // dari SELURUH kit tanpa memfilter jenis, jadi baris tray memang ada di
@@ -727,6 +790,14 @@ class TindakanController extends Controller
 
             DB::commit();
 
+            $this->logUsageActivity(
+                $usage->rowid,
+                'SAVE_LINES',
+                $user,
+                $updatedCount.' baris diperbarui',
+                0
+            );
+
             return $this->successResponse(['updated' => $updatedCount], 'Data pemakaian (Qty Used) berhasil disimpan sebagai Draft.');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -764,10 +835,12 @@ class TindakanController extends Controller
                 ->update([
                     'status' => 1,
                     'fk_user_valid' => $user->rowid,
-                    'datev' => \Carbon\Carbon::now()
+                    'datev' => $this->dolibarrNow()
                 ]);
 
             DB::commit();
+
+            $this->logUsageActivity($usage->rowid, 'VALIDATE', $user, 'Divalidasi dari aplikasi mobile', 1);
 
             return $this->successResponse([
                 'ref' => $usage->ref,
@@ -809,10 +882,12 @@ class TindakanController extends Controller
                 ->update([
                     'status' => 4, // 4 = Tarik Barang
                     'fk_user_tarik' => $user->rowid,
-                    'date_tarik' => \Carbon\Carbon::now()
+                    'date_tarik' => $this->dolibarrNow()
                 ]);
 
             DB::commit();
+
+            $this->logUsageActivity($usage->rowid, 'TARIK_BARANG', $user, 'Ditarik dari aplikasi mobile', 4);
 
             return $this->successResponse([
                 'ref' => $usage->ref,
@@ -900,7 +975,12 @@ class TindakanController extends Controller
         $pdf->setPaper('A4', 'portrait');
 
         $filename = 'Surat-Jalan-' . str_replace('/', '-', $tindakan->ref_sj) . '.pdf';
-        
+
+        // Dicatat sejajar dengan tombol Cetak SJ di ERP (print_sj.php): dokumen
+        // ini yang dibawa ke RS, jadi siapa yang mengunduh dan kapan itu penting
+        // saat ada selisih barang.
+        $this->logTindakanActivity($id, 'PRINT_SJ', $user, $tindakan->ref_sj, $tindakan->status);
+
         return $pdf->download($filename);
     }
 }
