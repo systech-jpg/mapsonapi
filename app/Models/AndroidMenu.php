@@ -16,6 +16,7 @@ class AndroidMenu extends Model
         'name',
         'icon',
         'route',
+        'color',
         'allowed_roles',
         'parent_id',
         'order_index',

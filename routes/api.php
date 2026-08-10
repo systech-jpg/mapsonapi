@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\TindakanController;
 use App\Http\Controllers\Api\SalesOrderController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\BeamsController;
+use App\Http\Controllers\Api\ForecastController;
 
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -85,4 +86,12 @@ Route::middleware('dolibarr.auth')->group(function () {
     Route::post('/chat/groups/{group_id}/members', [ChatController::class, 'addGroupMembers']);
     Route::get('/chat/groups/{group_id}/messages', [ChatController::class, 'getGroupMessages']);
     Route::post('/chat/groups/{group_id}/read', [ChatController::class, 'markGroupAsRead']);
+
+    // Rute Forecast
+    Route::get('/forecast/principals', [ForecastController::class, 'getPrincipals']);
+    Route::post('/forecast', [ForecastController::class, 'store']);
+    Route::get('/forecast/{id}/products', [ForecastController::class, 'getProducts']);
+    Route::get('/forecast/{id}/search-products', [ForecastController::class, 'searchProducts']);
+    Route::post('/forecast/{id}/add-product', [ForecastController::class, 'addProduct']);
+    Route::post('/forecast/{id}/save', [ForecastController::class, 'save']);
 });

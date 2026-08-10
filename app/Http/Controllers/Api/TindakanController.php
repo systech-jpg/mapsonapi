@@ -26,7 +26,22 @@ class TindakanController extends Controller
     }
 
     /**
-     * Menampilkan daftar tindakan yang dibuat hari ini.
+     * Jumlah baris per halaman bila klien tidak mengirim per_page.
+     */
+    private const TINDAKAN_PER_PAGE = 50;
+
+    /**
+     * Batas atas per_page, supaya klien tidak bisa memaksa menarik satu bulan
+     * penuh sekaligus lewat ?per_page=99999.
+     */
+    private const TINDAKAN_MAX_PER_PAGE = 100;
+
+    /**
+     * Menampilkan seluruh tindakan pada bulan berjalan (semua status), dipaginasi.
+     *
+     * Query param opsional:
+     *   ?page=1        halaman ke berapa (default 1)
+     *   ?per_page=50   baris per halaman (default 50, maksimum 100)
      */
     public function index(Request $request)
     {
@@ -36,24 +51,62 @@ class TindakanController extends Controller
             return $this->errorResponse('User tidak terautentikasi.', 401);
         }
 
-        // Filter tindakan hari ini berdasarkan tanggal pelaksanaan (bukan tanggal pembuatan)
-        $today = Carbon::today()->toDateString();
+        // Filter bulan berjalan berdasarkan tanggal pelaksanaan (bukan tanggal pembuatan).
+        // Kolom t.tanggal bertipe DATE, jadi whereBetween dengan string tanggal sudah
+        // presisi dan tetap bisa memakai index.
+        $awalBulan  = Carbon::now()->startOfMonth()->toDateString();
+        $akhirBulan = Carbon::now()->endOfMonth()->toDateString();
 
-        $tindakan = DB::table('llxjp_tindakan as t')
+        // Input dari klien tidak dipercaya. Nilai non-numerik dikembalikan ke default
+        // (bukan di-cast jadi 0, karena itu akan menyisakan 1 baris saja setelah dijepit),
+        // lalu hasilnya dibatasi ke rentang wajar.
+        $perPage = $request->query('per_page', self::TINDAKAN_PER_PAGE);
+        $perPage = is_numeric($perPage) ? (int) $perPage : self::TINDAKAN_PER_PAGE;
+        $perPage = max(1, min($perPage, self::TINDAKAN_MAX_PER_PAGE));
+
+        $page = $request->query('page', 1);
+        $page = is_numeric($page) ? (int) $page : 1;
+        $page = max(1, $page);
+
+        $paginator = DB::table('llxjp_tindakan as t')
             ->leftJoin('llxjp_societe as s', 's.rowid', '=', 't.fk_soc')
             ->leftJoin('llxjp_c_doctor as d', 'd.rowid', '=', 't.dokter')
             ->select('t.id', 't.ref', 't.status', 't.tanggal', 's.nom as rs_name', 'd.fullname as dokter_name', 't.pasien', 't.ref_sj')
-            ->whereDate('t.tanggal', $today)
+            ->whereBetween('t.tanggal', [$awalBulan, $akhirBulan])
+            // Tanpa filter status: Draft s/d Cancelled semuanya ikut tampil.
+            ->orderBy('t.tanggal', 'desc')
             ->orderBy('t.id', 'desc')
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
 
         // Overwrite nilai 'status' langsung dengan keterangannya
-        $tindakan->transform(function ($item) {
+        $paginator->getCollection()->transform(function ($item) {
             $item->status = $this->getStatusLabel($item->status);
             return $item;
         });
 
-        return $this->successResponse($tindakan, 'Berhasil mengambil daftar tindakan hari ini.');
+        // PENTING: 'data' sengaja dikirim sebagai array datar (bukan objek paginator)
+        // supaya klien lama yang mem-parse data sebagai list tidak rusak.
+        // Info halaman dipisah ke 'meta'.
+        $meta = [
+            'current_page' => $paginator->currentPage(),
+            'per_page'     => $paginator->perPage(),
+            'total'        => $paginator->total(),
+            'last_page'    => $paginator->lastPage(),
+            'from'         => $paginator->firstItem(),
+            'to'           => $paginator->lastItem(),
+            'has_more'     => $paginator->hasMorePages(),
+            'periode'      => [
+                'start' => $awalBulan,
+                'end'   => $akhirBulan,
+            ],
+        ];
+
+        return $this->successResponse(
+            array_values($paginator->items()),
+            'Berhasil mengambil daftar tindakan bulan ini.',
+            200,
+            $meta
+        );
     }
 
     /**

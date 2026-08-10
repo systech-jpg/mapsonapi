@@ -15,7 +15,9 @@
       "Bash(echo \"email: $\\(git config --global user.email\\)\")",
       "Bash(echo \"name : $\\(git config --local user.name\\)\")",
       "Bash(echo \"email: $\\(git config --local user.email\\)\")",
-      "Bash(grep -Ei \"^\\\\.env$|vendor/|chat_secure|\\\\.key$|node_modules\")"
+      "Bash(grep -Ei \"^\\\\.env$|vendor/|chat_secure|\\\\.key$|node_modules\")",
+      "Bash(echo \"name : $\\(git config user.name\\)\")",
+      "Bash(GIT_SSH_COMMAND=\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new\" git push -u origin main)"
     ]
   }
 }
