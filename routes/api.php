@@ -105,3 +105,6 @@ Route::middleware('dolibarr.auth')->group(function () {
     // Rute Scan Produk (Android)
     Route::post('/products/scan', [ProductController::class, 'scan']);
 });
+
+// TEST ROUTE
+Route::get('/test-stock', [ProductController::class, 'scan']);

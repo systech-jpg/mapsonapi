@@ -76,6 +76,18 @@ class ProductController extends Controller
 
         $realStock = (float) ($total_mov - $total_ur);
 
+        // DEBUGGING: Tulis hasil perhitungan ke log file
+        $logData = [
+            'time' => date('Y-m-d H:i:s'),
+            'barcode' => $barcode,
+            'ref' => $productRow->ref,
+            'p_stock' => $productRow->stock,
+            'total_mov' => $total_mov,
+            'total_ur' => $total_ur,
+            'realStock' => $realStock
+        ];
+        file_put_contents(storage_path('logs/scan_debug.log'), json_encode($logData) . PHP_EOL, FILE_APPEND);
+
         return response()->json([
             'success' => true,
             'message' => 'Produk ditemukan.',
