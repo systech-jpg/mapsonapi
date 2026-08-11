@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\BeamsController;
 use App\Http\Controllers\Api\ForecastController;
 use App\Http\Controllers\Api\SphController;
+use App\Http\Controllers\Api\ProductController;
 
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -100,4 +101,7 @@ Route::middleware('dolibarr.auth')->group(function () {
     Route::get('/sph', [SphController::class, 'index']);
     Route::get('/sph/{id}', [SphController::class, 'show']);
     Route::get('/sph/{id}/pdf', [SphController::class, 'downloadPdf']);
+
+    // Rute Scan Produk (Android)
+    Route::post('/products/scan', [ProductController::class, 'scan']);
 });
