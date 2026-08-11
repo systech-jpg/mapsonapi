@@ -23,9 +23,12 @@ class ProductController extends Controller
         }
 
         // Cari produk berdasarkan barcode di tabel llxjp_product
+        // Catatan: kolom llxjp_product.stock sengaja TIDAK dipakai. Field itu cache Dolibarr
+        // yang tidak ikut berkurang oleh usage_report (tindakan medis), jadi selalu lebih besar
+        // dari Saldo Akhir di dashboard.
         $productRow = DB::table('llxjp_product')
             ->where('barcode', $barcode)
-            ->select('rowid', 'ref', 'label', 'description', 'stock')
+            ->select('rowid', 'ref', 'label', 'description')
             ->first();
 
         if (!$productRow) {
@@ -49,13 +52,19 @@ class ProductController extends Controller
         // Hitung real stok (Saldo Akhir) dari pergerakan (sama seperti di report_all_stock.php)
         $productId = $productRow->rowid;
 
+        // Batas akhir perhitungan = akhir bulan berjalan, mengikuti periode default dashboard
+        // (report_all_stock.php: periode berakhir di bulan berjalan). Tanpa batas ini, transaksi
+        // yang salah tanggal ke masa depan ikut terhitung di scan tapi tidak di dashboard.
+        $cutoff = date('Y-m-t 23:59:59');
+
         // 1. Total dari stock_mouvement
         $sql_mov = "SELECT SUM(sm.value * COALESCE(pa.qty, 1) * COALESCE(pa2.qty, 1)) as total_mov
                     FROM llxjp_stock_mouvement sm
                     LEFT JOIN llxjp_product_association pa ON pa.fk_product_pere = sm.fk_product
                     LEFT JOIN llxjp_product_association pa2 ON pa2.fk_product_pere = pa.fk_product_fils
-                    WHERE COALESCE(pa2.fk_product_fils, pa.fk_product_fils, sm.fk_product) = ?";
-        $result_mov = DB::select($sql_mov, [$productId]);
+                    WHERE sm.datem <= ?
+                    AND COALESCE(pa2.fk_product_fils, pa.fk_product_fils, sm.fk_product) = ?";
+        $result_mov = DB::select($sql_mov, [$cutoff, $productId]);
         $total_mov = $result_mov[0]->total_mov ?? 0;
 
         // 2. Total dari usage_report (penggunaan)
@@ -65,23 +74,25 @@ class ProductController extends Controller
                    LEFT JOIN llxjp_product_association pa ON pa.fk_product_pere = urd.fk_product
                    LEFT JOIN llxjp_product_association pa2 ON pa2.fk_product_pere = pa.fk_product_fils
                    WHERE urd.qty_used > 0
+                   AND ur.date_creation <= ?
                    AND (ur.fk_so IS NULL OR ur.fk_so = 0 OR NOT EXISTS (
                        SELECT 1 FROM llxjp_element_element ee
                        JOIN llxjp_expedition ex ON ex.rowid = ee.fk_target
                        WHERE ee.sourcetype = 'commande' AND ee.targettype = 'shipping' AND ee.fk_source = ur.fk_so AND ex.fk_statut > 0
                    ))
                    AND COALESCE(pa2.fk_product_fils, pa.fk_product_fils, urd.fk_product) = ?";
-        $result_ur = DB::select($sql_ur, [$productId]);
+        $result_ur = DB::select($sql_ur, [$cutoff, $productId]);
         $total_ur = $result_ur[0]->total_ur ?? 0;
 
         $realStock = (float) ($total_mov - $total_ur);
 
-        // DEBUGGING: Tulis hasil perhitungan ke log file
+        // DEBUGGING: Tulis hasil perhitungan ke log file.
+        // Bandingkan dengan `php artisan stok:cek <ref>` bila angkanya beda dengan dashboard.
         $logData = [
             'time' => date('Y-m-d H:i:s'),
             'barcode' => $barcode,
             'ref' => $productRow->ref,
-            'p_stock' => $productRow->stock,
+            'cutoff' => $cutoff,
             'total_mov' => $total_mov,
             'total_ur' => $total_ur,
             'realStock' => $realStock
