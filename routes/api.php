@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\SalesOrderController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\BeamsController;
 use App\Http\Controllers\Api\ForecastController;
+use App\Http\Controllers\Api\SphController;
 
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -94,4 +95,9 @@ Route::middleware('dolibarr.auth')->group(function () {
     Route::get('/forecast/{id}/search-products', [ForecastController::class, 'searchProducts']);
     Route::post('/forecast/{id}/add-product', [ForecastController::class, 'addProduct']);
     Route::post('/forecast/{id}/save', [ForecastController::class, 'save']);
+
+    // Rute SPH (Surat Penawaran Harga)
+    Route::get('/sph', [SphController::class, 'index']);
+    Route::get('/sph/{id}', [SphController::class, 'show']);
+    Route::get('/sph/{id}/pdf', [SphController::class, 'downloadPdf']);
 });
