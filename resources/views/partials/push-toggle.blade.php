@@ -59,20 +59,33 @@ async function periksaStatus() {
     return;
   }
 
-  const registration = await navigator.serviceWorker.ready;
+  // getRegistration() cukup untuk membaca langganan dan langsung tersedia.
+  // serviceWorker.ready menunggu worker berstatus aktif — pada pemuatan
+  // pertama setelah versi SW baru terpasang, itu bisa resolve sangat lambat
+  // sehingga status terlihat baru muncul setelah refresh.
+  const registration = (await navigator.serviceWorker.getRegistration())
+    || (await navigator.serviceWorker.ready);
+
+  if (! registration) return;
+
   const subscription = await registration.pushManager.getSubscription();
 
   if (subscription) {
-    // Langganan ada di perangkat. Kirim ulang diam-diam supaya baris di server
-    // ikut pulih bila sebelumnya gagal tersimpan — endpoint-nya idempoten,
-    // jadi tidak akan menggandakan data.
-    try {
-      await kirimKeServer(subscription);
-      status.classList.remove('d-none');
-    } catch (e) {
+    // Tampilkan segera; sinkronisasi ke server berjalan di latar belakang.
+    // Menunggunya lebih dulu membuat status baru muncul setelah satu round
+    // trip jaringan selesai.
+    status.classList.remove('d-none');
+
+    // Kirim ulang supaya baris di server ikut pulih bila sebelumnya gagal
+    // tersimpan — endpoint-nya idempoten, jadi tidak menggandakan data.
+    kirimKeServer(subscription).catch((e) => {
       console.error(e);
+      // Langganan ada di perangkat tapi tidak tersimpan di server: notifikasi
+      // tidak akan sampai, jadi beri jalan untuk mencoba lagi.
+      status.classList.add('d-none');
       btn.classList.remove('d-none');
-    }
+    });
+
     return;
   }
 
