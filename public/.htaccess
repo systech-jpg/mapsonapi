@@ -23,3 +23,23 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# ---------------------------------------------------------------------------
+# PWA
+# ---------------------------------------------------------------------------
+<IfModule mod_headers.c>
+    # Service worker tidak boleh di-cache lama. Kalau browser menahan versi
+    # lama, pengguna tidak akan pernah menerima pembaruan aplikasi meski
+    # CACHE_VERSION di sw.js sudah dinaikkan.
+    <Files "sw.js">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </Files>
+</IfModule>
+
+# Manifest disajikan lewat route Laravel, bukan sebagai file statis, jadi
+# Content-Type-nya sudah benar tanpa perlu diatur di sini.
+<IfModule mod_mime.c>
+    AddType application/manifest+json .webmanifest
+</IfModule>
