@@ -6,6 +6,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 
 /**
  * Client untuk memanggil endpoint di routes/api.php dari sisi web/PWA.
@@ -18,7 +19,19 @@ class Api
 {
     public static function client(): PendingRequest
     {
-        $request = Http::baseUrl(config('services.backend.url'))
+        $baseUrl = config('services.backend.url');
+
+        // Tanpa penjagaan ini, API_BASE_URL yang belum diisi muncul sebagai
+        // TypeError di dalam Http client — pesan yang tidak menunjukkan
+        // penyebab sebenarnya dan menyulitkan penelusuran di server.
+        if (blank($baseUrl)) {
+            throw new RuntimeException(
+                'API_BASE_URL belum diisi di .env. Isi dengan URL API aplikasi ini '
+                . '(contoh: https://domain-anda.com/api), lalu jalankan php artisan config:cache.'
+            );
+        }
+
+        $request = Http::baseUrl($baseUrl)
             ->acceptJson()
             ->timeout(20)
             // Hanya ulangi saat koneksi gagal. Status 4xx/5xx sengaja tidak
