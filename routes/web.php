@@ -43,9 +43,9 @@ Route::get('/manifest.webmanifest', function () {
         'theme_color' => '#BC9E68',
         'lang' => 'id',
         'icons' => [
-            ['src' => '/icons/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png'],
-            ['src' => '/icons/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png'],
-            ['src' => '/icons/icon-maskable-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+            ['src' => '/pwa/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png'],
+            ['src' => '/pwa/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png'],
+            ['src' => '/pwa/icon-maskable-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
         ],
     ])->header('Content-Type', 'application/manifest+json');
 })->name('manifest');

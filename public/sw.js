@@ -1,10 +1,13 @@
-const CACHE_VERSION = 'v1';
+// v2: ikon PWA dipindah dari /icons/ ke /pwa/ karena /icons/ dipetakan Apache
+// ke folder ikon ERP, sehingga precache gagal dan service worker tidak pernah
+// aktif. Naikkan versi ini setiap kali daftar PRECACHE atau aset berubah.
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `app-shell-${CACHE_VERSION}`;
 
 const PRECACHE = [
   '/offline.html',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  '/pwa/icon-192.png',
+  '/pwa/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -52,7 +55,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title || 'Notifikasi', {
       body: payload.body || '',
-      icon: payload.icon || '/icons/icon-192.png',
+      icon: payload.icon || '/pwa/icon-192.png',
       badge: '/badge-72.png',
       tag: payload.tag || undefined,
       data: { url: (payload.data && payload.data.url) || '/' },

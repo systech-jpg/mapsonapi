@@ -35,7 +35,7 @@ class SalesOrderBaru extends Notification
         return (new WebPushMessage)
             ->title('Sales order baru masuk')
             ->body($pelanggan ? "{$ref} — {$pelanggan}" : "{$ref} menunggu konfirmasi.")
-            ->icon('/icons/icon-192.png')
+            ->icon('/pwa/icon-192.png')
             ->badge('/badge-72.png')
             ->tag('sales-order-' . ($this->order['rowid'] ?? $ref))
             ->data(['url' => '/sales-order']);
