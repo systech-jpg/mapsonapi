@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tidak ada koneksi</title>
+  <style>
+    /* Tanpa CDN sama sekali: halaman ini justru tampil saat jaringan mati. */
+    body { font-family: system-ui, sans-serif; display: grid; place-items: center;
+           min-height: 100vh; margin: 0; padding: 2rem; text-align: center;
+           color: #111111; background: #F8F3F6; }
+    h1 { font-size: 1.25rem; margin-bottom: .5rem; }
+    p  { color: #8E8E93; margin-bottom: 1.5rem; }
+    button { padding: .625rem 1.25rem; border: 0; border-radius: .5rem;
+             background: #BC9E68; color: #fff; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>Tidak ada koneksi internet</h1>
+    <p>Periksa jaringan Anda, lalu muat ulang halaman.</p>
+    <button onclick="location.reload()">Muat ulang</button>
+  </div>
+</body>
+</html>

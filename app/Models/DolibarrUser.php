@@ -3,9 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use NotificationChannels\WebPush\HasPushSubscriptions;
 
 class DolibarrUser extends Model
 {
+    /**
+     * Push subscription ditautkan ke user Dolibarr, bukan model User lokal,
+     * supaya identitas penerima notifikasi sama persis dengan aplikasi Android.
+     * Relasinya polymorphic sehingga tidak menambah kolom apa pun di llxjp_user.
+     */
+    use HasPushSubscriptions;
+
     protected $table = 'llxjp_user';
     protected $primaryKey = 'rowid';
     public $timestamps = false; // Usually handled differently or named differently in Dolibarr

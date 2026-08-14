@@ -40,4 +40,12 @@ return [
         'secret_key' => env('BEAMS_SECRET_KEY'),
     ],
 
+    /*
+    | Base URL API yang dipanggil frontend PWA. Saat ini menunjuk ke aplikasi
+    | ini sendiri, karena routes/api.php berada di project yang sama.
+    */
+    'backend' => [
+        'url' => env('API_BASE_URL'),
+    ],
+
 ];
