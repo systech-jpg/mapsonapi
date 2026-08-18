@@ -152,47 +152,70 @@
       @endif
     @endforelse
 
-    {{-- Form bukti tarik barang, mengikuti "Upload Bukti Tarik Barang" di
-         halaman usage ERP. Tanpa capture="environment": dengan atribut itu
-         ponsel langsung membuka kamera dan galeri tidak bisa dipilih, padahal
-         foto sering sudah diambil lebih dulu di gudang. --}}
+    {{-- Rantai bukti foto, urutannya mengikuti alur di ERP:
+         pickup -> barang sampai -> tarik barang -> serah terima dokumen.
+         Tiap tahap hanya menampilkan satu dari dua bentuk: form unggah bila
+         belum ada buktinya, atau fotonya bila sudah. --}}
+
+    @if ($this->bisaPickup())
+      @include('partials.bukti-unggah', [
+        'judul' => 'Bukti Pickup',
+        'keterangan' => 'Wajib sebelum konfirmasi barang sampai. Ambil foto langsung dengan kamera, atau pilih dari galeri.',
+        'properti' => 'buktiPickup',
+        'aksi' => 'pickup',
+        'tombol' => 'Simpan Pickup',
+        'ikon' => 'bi-box-arrow-up',
+      ])
+    @elseif ($this->adaBuktiPickup())
+      @include('partials.bukti-tampil', ['judul' => 'Bukti Pickup', 'rute' => 'tindakan.bukti-pickup', 'id' => $tindakanId])
+    @endif
+
+    @if ($this->bisaKonfirmasiSampai())
+      @include('partials.bukti-unggah', [
+        'judul' => 'Bukti Barang Sampai di RS',
+        'keterangan' => 'Foto barang saat diterima di rumah sakit. Setelah disimpan, status berubah menjadi Delivered / Ready.',
+        'properti' => 'buktiArrive',
+        'aksi' => 'konfirmasiSampai',
+        'tombol' => 'Konfirmasi Barang Sampai',
+        'ikon' => 'bi-box-seam',
+      ])
+    @elseif ($this->adaBuktiArrive())
+      @include('partials.bukti-tampil', ['judul' => 'Bukti Barang Sampai di RS', 'rute' => 'tindakan.bukti-arrive', 'id' => $tindakanId])
+    @endif
+
     @if ($this->bisaTarikBarang())
-      <div class="bg-white rounded-4 p-3 shadow-sm mt-3">
-        <h3 class="h6 fw-bold mb-1">Bukti Tarik Barang</h3>
-        <p class="text-secondary small mb-2">
-          Wajib. Ambil foto langsung dengan kamera, atau pilih dari galeri.
-        </p>
-
-        <input type="file" accept="image/*" wire:model="bukti"
-               class="form-control @error('bukti') is-invalid @enderror"
-               aria-label="Foto bukti tarik barang">
-
-        @error('bukti') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
-
-        <div wire:loading wire:target="bukti" class="text-secondary small mt-2">
-          <span class="spinner-border spinner-border-sm" role="status"></span>
-          <span class="ms-1">Mengunggah foto…</span>
-        </div>
-
-        @if ($bukti)
-          <div wire:loading.remove wire:target="bukti" class="mt-2">
-            <img src="{{ $bukti->temporaryUrl() }}" alt="Pratinjau bukti tarik barang" class="tk-bukti">
-          </div>
-        @endif
-      </div>
+      @include('partials.bukti-unggah', [
+        'judul' => 'Bukti Tarik Barang',
+        'keterangan' => 'Foto barang saat ditarik kembali dari rumah sakit.',
+        'properti' => 'bukti',
+        'aksi' => 'tarikBarang',
+        'tombol' => 'Tarik Barang',
+        'ikon' => 'bi-arrow-down-square',
+      ])
     @elseif ($this->adaBukti())
-      <div class="bg-white rounded-4 p-3 shadow-sm mt-3">
-        <h3 class="h6 fw-bold mb-2">Bukti Tarik Barang</h3>
-        <a href="{{ route('tindakan.bukti-tarik', $tindakanId) }}" target="_blank" rel="noopener">
-          <img src="{{ route('tindakan.bukti-tarik', $tindakanId) }}" alt="Bukti tarik barang" class="tk-bukti">
-        </a>
-      </div>
+      @include('partials.bukti-tampil', ['judul' => 'Bukti Tarik Barang', 'rute' => 'tindakan.bukti-tarik', 'id' => $tindakanId])
+    @endif
+
+    @if ($this->bisaSerahTerima())
+      @include('partials.bukti-unggah', [
+        'judul' => 'Bukti Serah Terima Dokumen',
+        'keterangan' => 'Foto dokumen yang diserahterimakan. Status laporan tidak berubah, hanya keterangannya di ERP.',
+        'properti' => 'buktiDokumen',
+        'aksi' => 'serahTerima',
+        'tombol' => 'Simpan Serah Terima',
+        'ikon' => 'bi-file-earmark-check',
+      ])
+    @elseif ($this->adaBuktiDokumen())
+      @include('partials.bukti-tampil', ['judul' => 'Bukti Serah Terima Dokumen', 'rute' => 'tindakan.bukti-dokumen', 'id' => $tindakanId])
     @endif
 
     {{-- Bilah aksi: isinya mengikuti peran dan status, sama seperti di Android. --}}
     @php
-      $adaAksi = $this->bisaIsi() || $this->bisaValidasiJadwal() || $this->usageTerkunci()
-                 || $this->bisaKonfirmasiSampai() || $this->bisaTarikBarang();
+      // Tombol tahap berbukti foto TIDAK ikut di sini: masing-masing punya
+      // tombolnya sendiri di dalam kartu unggah, tepat di bawah pemilih
+      // fotonya. Menaruhnya juga di bilah bawah hanya membuat petugas menekan
+      // tombol yang pasti ditolak server karena fotonya belum dipilih.
+      $adaAksi = $this->bisaIsi() || $this->bisaValidasiJadwal() || $this->usageTerkunci();
     @endphp
 
     @if ($adaAksi)
@@ -228,32 +251,6 @@
             </a>
           @endif
         @else
-          @if ($this->bisaKonfirmasiSampai())
-            <button type="button" class="btn btn-emas flex-fill"
-                    wire:click="konfirmasiSampai"
-                    wire:confirm="Konfirmasi bahwa barang sudah sampai di rumah sakit?"
-                    wire:loading.attr="disabled" wire:target="konfirmasiSampai">
-              <i class="bi bi-box-seam me-1"></i> Barang Sampai
-            </button>
-          @endif
-
-          @if ($this->bisaTarikBarang())
-            {{-- Dikunci selama foto belum dipilih: tanpa bukti, server pasti
-                 menolak dengan 422 dan status dokumen tidak berubah. --}}
-            <button type="button" class="btn btn-emas flex-fill"
-                    wire:click="tarikBarang"
-                    wire:confirm="Tarik barang untuk laporan pemakaian ini?"
-                    @disabled(! $bukti)
-                    wire:loading.attr="disabled" wire:target="tarikBarang, bukti">
-              <span wire:loading.remove wire:target="tarikBarang">
-                <i class="bi bi-arrow-down-square me-1"></i> Tarik Barang
-              </span>
-              <span wire:loading wire:target="tarikBarang">
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span> Mengirim…
-              </span>
-            </button>
-          @endif
-
           @if ($this->usageTerkunci())
             <a href="{{ route('tindakan.surat-jalan', $tindakanId) }}" class="btn btn-outline-emas flex-fill">
               <i class="bi bi-file-earmark-pdf me-1"></i> Surat Jalan

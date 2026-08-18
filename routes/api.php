@@ -60,6 +60,14 @@ Route::middleware('dolibarr.auth')->group(function () {
     Route::get('/tindakan', [TindakanController::class, 'index']);
     Route::get('/tindakan/{id}', [TindakanController::class, 'show']);
     Route::post('/tindakan/{id}/confirm-arrival', [TindakanController::class, 'confirmArrival']);
+    /*
+    | Bukti pickup (barang diambil kurir). Multipart, field `bukti`.
+    | Hanya menyimpan foto dan mencatat log — status dokumen tidak berubah,
+    | sama seperti action do_pickup di halaman prepare ERP.
+    */
+    Route::post('/tindakan/{id}/pickup', [TindakanController::class, 'pickup']);
+    Route::get('/tindakan/{id}/bukti-pickup', [TindakanController::class, 'buktiPickup']);
+    Route::get('/tindakan/{id}/bukti-arrive', [TindakanController::class, 'buktiArrive']);
     Route::get('/tindakan/{id}/surat-jalan', [TindakanController::class, 'downloadSuratJalan']);
     
     // Rute Usage Report (Pemakaian)
@@ -70,6 +78,13 @@ Route::middleware('dolibarr.auth')->group(function () {
     // Foto bukti tarik barang. Disimpan di storage/app, bukan public/, jadi
     // hanya bisa dibaca lewat route ini yang ikut middleware dolibarr.auth.
     Route::get('/tindakan/usage/{usage_id}/bukti-tarik', [TindakanController::class, 'buktiTarik']);
+    /*
+    | Serah terima dokumen. Foto saja, status usage report tidak berubah —
+    | yang berganti hanya labelnya di ERP, dan label itu ditentukan dari ada
+    | tidaknya berkas DOK_TERIMA.
+    */
+    Route::post('/tindakan/usage/{usage_id}/dokumen-terima', [TindakanController::class, 'dokumenTerima']);
+    Route::get('/tindakan/usage/{usage_id}/bukti-dokumen', [TindakanController::class, 'buktiDokumen']);
 
     // Rute Sales Orders
     Route::get('/sales-orders', [SalesOrderController::class, 'index']);

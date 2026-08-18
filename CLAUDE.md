@@ -204,16 +204,69 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     `llxjp_usage_report_log` dengan tautan `document.php` yang bentuknya sama
     dengan buatan `UsageReport::tarikBarang()`.
 
-12. **`qty_used` tidak boleh melebihi `qty_sent`.** Dijaga di
+12. **Bukti foto tiap tahap memakai satu pola yang sama.** Selain TARIK ada
+    PICKUP (`POST /api/tindakan/{id}/pickup`, multipart, field `bukti`).
+    Keduanya menulis ke `<ERP_DOC_ROOT>/<REF_disanitasi>/<PREFIX>_<Ymd_His>.<ext>`
+    lewat `simpanBukti()`, dan mencatat log dengan tautan `document.php` yang
+    bentuknya sama dengan `tm_proof_badge()` di ERP.
+
+    Empat tahap, semuanya wajib foto, urutannya mengikuti ERP:
+
+    | Tahap | Endpoint | Prefix | Syarat | Ubah status? |
+    |---|---|---|---|---|
+    | Pickup | `POST /tindakan/{id}/pickup` | PICKUP | tindakan status 2 | tidak |
+    | Barang sampai | `POST /tindakan/{id}/confirm-arrival` | ARRIVE | tindakan status 2 | ya, 2 → 3 |
+    | Tarik barang | `POST /tindakan/usage/{id}/tarik-barang` | TARIK | usage status 1 | ya, 1 → 4 |
+    | Serah terima | `POST /tindakan/usage/{id}/dokumen-terima` | DOK_TERIMA | usage status 4 | tidak |
+
+    Pickup dan serah terima menolak unggahan kedua dengan 409 kecuali diberi
+    `ganti=1`, mengikuti penjagaan yang sama di ERP.
+
+    Di PWA, konfirmasi "Barang Sampai" menuntut bukti pickup sudah ada lebih
+    dulu — sama seperti ERP yang baru menggambar form berikutnya setelah bukti
+    pickup tersimpan. Keempat kartunya memakai satu partial bersama
+    `resources/views/partials/bukti-unggah.blade.php`.
+
+    Log tahap barang sampai memakai action `ARRIVAL`, bukan `STATUS_DELIVERED`
+    seperti ERP: `Tindakan::getLogActionLabel()` mengenal ARRIVAL dan
+    menerjemahkannya, sedangkan STATUS_DELIVERED tampil sebagai kode mentah.
+    Serah terima memakai action `'DOKUMEN DITERIMA'` — dengan spasi, bukan garis
+    bawah, karena halaman usage ERP mencarinya persis begitu.
+
+13. **`qty_used` tidak boleh melebihi `qty_sent`.** Dijaga di
     `saveUsageLines()` (422, diperiksa sebelum transaksi dibuka) dan sekali
     lagi di web sebelum tombol Simpan/Validasi bekerja. Sebelum penjagaan ini
     ada, PRMM/26/08/00063 sempat tervalidasi dengan qty_used 5 dari qty_sent 1
     dan kolom Qty Kembali menjadi -4.
 
-13. **Surat jalan PDF harus diambil server ke server.** Browser tidak pernah
+14. **Surat jalan PDF harus diambil server ke server.** Browser tidak pernah
     memegang api_key, jadi tautan langsung ke `/api/tindakan/{id}/surat-jalan`
     pasti 401. Route web `tindakan.surat-jalan` di `routes/web.php` yang
     mengambilkannya lalu meneruskan isinya.
+
+15. **Halaman ERP menilai tahap dari BERKAS di disk, bukan dari kolom
+    status — dan itu harus dijaga di kedua sisi.** Unggahan dari PWA menulis
+    berkas bukti lewat jalurnya sendiri, jadi setiap halaman ERP yang hanya
+    melihat kolom status akan terus menampilkan form unggah walau fotonya sudah
+    ada. Itu yang terjadi di `custom/tindakanmedis/prepare.php`: tahap PICKUP
+    sudah membaca disk (`tm_proof_files`), tahap ARRIVE belum. Sekarang keduanya
+    membaca disk, lengkap dengan tombol **TANDAI SAMPAI (READY)** untuk kasus
+    berkas sudah ada tapi status belum naik.
+
+    Sisa yang belum diseragamkan: `usage.php` masih menilai tahap TARIK murni
+    dari status usage (1), dengan alasan yang ditulis di komentarnya — berkas
+    TARIK bisa tertinggal dari percobaan yang gagal. Bila nanti tarik barang
+    dari PWA berhenti setengah jalan, di situlah tempat memeriksanya.
+
+16. **Sesudah unggah bukti di PWA, halaman dimuat ulang — jangan hanya
+    `muat()`.** `Detail::unggahBukti()` mengakhiri dengan
+    `redirect(..., navigate: true)` dan pesannya lewat `session()->flash()`.
+    Dua alasannya: (a) keempat kartu bukti memakai partial yang sama sehingga
+    penggabungan DOM Livewire bisa keliru mencocokkan kartu yang hilang dengan
+    kartu yang muncul — kini masing-masing diberi `wire:key`; (b) `muat()`
+    keluar lebih awal bila API tidak terhubung, meninggalkan `$info` versi LAMA
+    sehingga tahapnya seolah mundur. Penolakan server (termasuk 409) juga
+    dimuat ulang, karena 409 justru pertanda layar yang ketinggalan.
 
 ---
 

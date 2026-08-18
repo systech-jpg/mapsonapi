@@ -45,6 +45,15 @@ class Detail extends Component
      */
     public $bukti = null;
 
+    /** Foto bukti pickup (barang diambil kurir), tahap sebelum barang sampai. */
+    public $buktiPickup = null;
+
+    /** Foto bukti barang sampai di RS. Menaikkan status ke Delivered/Ready. */
+    public $buktiArrive = null;
+
+    /** Foto bukti serah terima dokumen, tahap terakhir setelah barang ditarik. */
+    public $buktiDokumen = null;
+
     public bool $isTS = false;
 
     /**
@@ -276,9 +285,59 @@ class Detail extends Component
         return $this->sisiTs() && $this->jadwalDraft();
     }
 
+    /** Bukti pickup sudah pernah diunggah untuk tindakan ini. */
+    public function adaBuktiPickup(): bool
+    {
+        return filled($this->info['bukti_pickup'] ?? null);
+    }
+
+    /**
+     * Pickup diunggah gudang saat barang keluar, yaitu pada status In Delivery
+     * dan selama buktinya belum ada. Sama dengan syarat form di halaman prepare
+     * ERP: begitu bukti tersimpan, formnya berganti menjadi tahap berikutnya.
+     */
+    public function bisaPickup(): bool
+    {
+        return ! $this->sisiTs()
+            && $this->statusMemuat(['In Delivery'])
+            && ! $this->adaBuktiPickup();
+    }
+
+    /**
+     * Konfirmasi barang sampai baru boleh setelah bukti pickup ada — urutan
+     * yang sama dengan ERP, di mana form "Sampai di RS" memang baru digambar
+     * setelah bukti pickup tersimpan. Tanpa aturan ini, tahap pickup bisa
+     * terlewat begitu saja dari sisi mobile.
+     */
     public function bisaKonfirmasiSampai(): bool
     {
-        return ! $this->sisiTs() && $this->statusMemuat(['In Delivery']);
+        return ! $this->sisiTs()
+            && $this->statusMemuat(['In Delivery'])
+            && $this->adaBuktiPickup();
+    }
+
+    /** Bukti barang sampai sudah pernah diunggah. */
+    public function adaBuktiArrive(): bool
+    {
+        return filled($this->info['bukti_arrive'] ?? null);
+    }
+
+    /** Bukti serah terima dokumen sudah pernah diunggah. */
+    public function adaBuktiDokumen(): bool
+    {
+        return filled($this->usage['bukti_dokumen'] ?? null);
+    }
+
+    /**
+     * Serah terima dokumen adalah tahap sesudah barang ditarik (status usage 4)
+     * dan sebelum gudang menekan Accept. Sama seperti pickup, formnya hilang
+     * begitu buktinya tersimpan.
+     */
+    public function bisaSerahTerima(): bool
+    {
+        return ! $this->sisiTs()
+            && (int) ($this->usage['status'] ?? 0) === 4
+            && ! $this->adaBuktiDokumen();
     }
 
     /** Tarik barang hanya pada status usage 1 (Validated, menunggu ditarik). */
@@ -386,13 +445,143 @@ class Detail extends Component
         $this->jalankan("/tindakan/{$this->tindakanId}/validate", 'Jadwal tindakan berhasil divalidasi.');
     }
 
-    public function konfirmasiSampai(): void
+    /**
+     * Konfirmasi barang sampai sekarang membawa foto, mengikuti form
+     * "Upload Bukti Sampai di RS" di halaman prepare ERP. Foto disimpan lebih
+     * dulu di server, baru statusnya naik — jadi tidak ada dokumen Ready tanpa
+     * bukti.
+     */
+    public function konfirmasiSampai()
     {
         if (! $this->bisaKonfirmasiSampai()) {
             return;
         }
 
-        $this->jalankan("/tindakan/{$this->tindakanId}/confirm-arrival", 'Barang dikonfirmasi sampai di RS.');
+        $this->validate([
+            'buktiArrive' => ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:8192'],
+        ], [
+            'buktiArrive.required' => 'Ambil atau pilih foto bukti barang sampai dulu.',
+            'buktiArrive.image' => 'Berkas yang dipilih bukan foto.',
+            'buktiArrive.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        return $this->unggahBukti(
+            "/tindakan/{$this->tindakanId}/confirm-arrival",
+            'buktiArrive',
+            'Barang dikonfirmasi sampai di RS. Foto bukti tersimpan.'
+        );
+    }
+
+    /**
+     * Serah terima dokumen: foto saja, status laporan tidak berubah. Yang
+     * berganti hanya labelnya di ERP, dan label itu ditentukan dari ada
+     * tidaknya berkas DOK_TERIMA.
+     */
+    public function serahTerima()
+    {
+        if (! $this->bisaSerahTerima()) {
+            return;
+        }
+
+        $this->validate([
+            'buktiDokumen' => ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:8192'],
+        ], [
+            'buktiDokumen.required' => 'Ambil atau pilih foto bukti serah terima dulu.',
+            'buktiDokumen.image' => 'Berkas yang dipilih bukan foto.',
+            'buktiDokumen.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        return $this->unggahBukti(
+            "/tindakan/usage/{$this->tindakanId}/dokumen-terima",
+            'buktiDokumen',
+            'Bukti serah terima dokumen tersimpan.'
+        );
+    }
+
+    /**
+     * Pengiriman berkas yang dipakai bersama keempat tahap bukti: POST
+     * multipart, lalu MUAT ULANG HALAMAN — bukan sekadar $this->muat().
+     *
+     * Menggambar ulang di tempat pernah membuat layar tertinggal dari server:
+     * fotonya sudah tersimpan (terlihat di ERP dan di llxjp_tindakan_activity_log),
+     * tapi kartu unggah yang lama masih terpampang seolah belum diunggah. Dua
+     * sebabnya sama-sama tertutup oleh pemuatan ulang:
+     *
+     *   1. Kartu tahap ini hilang dan kartu tahap berikutnya lahir dalam satu
+     *      tanggapan. Penggabungan DOM Livewire mencocokkan elemen bersaudara
+     *      yang bentuknya kembar (keempat kartu memakai partial yang sama),
+     *      sehingga bisa mempertahankan kartu lama.
+     *   2. Bila muat() gagal menghubungi API sesudah unggahan berhasil, ia
+     *      keluar lebih awal dan $info tetap berisi data LAMA — tahapnya mundur
+     *      lagi tanpa ada yang salah di server.
+     *
+     * Jawaban server apa pun (sukses maupun penolakan) berakhir dengan
+     * pemuatan ulang, karena penolakan seperti 409 "bukti sudah tersimpan"
+     * justru pertanda layarlah yang ketinggalan. Hanya kegagalan jaringan yang
+     * ditahan di tempat: di situ server memang belum menerima apa-apa, dan
+     * foto yang sudah dipilih tidak perlu hilang.
+     */
+    protected function unggahBukti(string $path, string $properti, string $pesanSukses)
+    {
+        try {
+            Api::unggah(
+                $path,
+                'bukti',
+                $this->{$properti}->get(),
+                $this->{$properti}->getClientOriginalName()
+            );
+        } catch (RequestException $e) {
+            $this->{$properti} = null;
+
+            session()->flash('galat', $e->response->json('message') ?? 'Unggahan ditolak server.');
+
+            return $this->muatUlang();
+        } catch (\Throwable $e) {
+            $this->pesan = 'Gagal menghubungi server. Foto belum tersimpan.';
+
+            return null;
+        }
+
+        $this->{$properti} = null;
+
+        session()->flash('pesan', $pesanSukses);
+
+        return $this->muatUlang();
+    }
+
+    /**
+     * Membuka ulang halaman detail ini dari awal. Dipakai sesudah aksi yang
+     * mengubah keadaan di server, supaya seluruh kartu digambar dari data baru
+     * dan tidak ada sisa DOM tahap sebelumnya.
+     */
+    protected function muatUlang()
+    {
+        return $this->redirect(route('tindakan.detail', $this->tindakanId), navigate: true);
+    }
+
+    /**
+     * Unggah bukti pickup. Tidak menaikkan status apa pun — persis seperti
+     * tombol SIMPAN PICKUP di halaman prepare ERP.
+     */
+    public function pickup()
+    {
+        if (! $this->bisaPickup()) {
+            return;
+        }
+
+        $this->validate([
+            'buktiPickup' => ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:8192'],
+        ], [
+            'buktiPickup.required' => 'Ambil atau pilih foto bukti pickup dulu.',
+            'buktiPickup.image' => 'Berkas yang dipilih bukan foto.',
+            'buktiPickup.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        return $this->unggahBukti(
+            "/tindakan/{$this->tindakanId}/pickup",
+            'buktiPickup',
+            'Bukti pickup tersimpan. Lanjutkan dengan konfirmasi barang sampai.'
+        );
     }
 
     /**
@@ -400,7 +589,7 @@ class Detail extends Component
      * ERP. Karena itu aksinya tidak lewat jalankan(): payload-nya multipart,
      * bukan POST kosong seperti dua aksi lainnya.
      */
-    public function tarikBarang(): void
+    public function tarikBarang()
     {
         if (! $this->bisaTarikBarang()) {
             return;
@@ -414,30 +603,11 @@ class Detail extends Component
             'bukti.max' => 'Ukuran foto maksimal 8 MB.',
         ]);
 
-        try {
-            Api::unggah(
-                "/tindakan/usage/{$this->tindakanId}/tarik-barang",
-                'bukti',
-                $this->bukti->get(),
-                $this->bukti->getClientOriginalName()
-            );
-        } catch (RequestException $e) {
-            $this->pesan = $e->response->json('message') ?? 'Tarik barang ditolak server.';
-            $this->muat();
-
-            return;
-        } catch (\Throwable $e) {
-            $this->pesan = 'Gagal menghubungi server. Barang belum ditarik.';
-
-            return;
-        }
-
-        // Berkas sementaranya dilepas supaya tidak ikut tergambar lagi setelah
-        // dokumen berpindah status.
-        $this->bukti = null;
-
-        $this->pesan = 'Barang berhasil ditarik. Foto bukti tersimpan.';
-        $this->muat();
+        return $this->unggahBukti(
+            "/tindakan/usage/{$this->tindakanId}/tarik-barang",
+            'bukti',
+            'Barang berhasil ditarik. Foto bukti tersimpan.'
+        );
     }
 
     /**

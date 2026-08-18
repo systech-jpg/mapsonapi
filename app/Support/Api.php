@@ -73,6 +73,32 @@ class Api
     }
 
     /**
+     * Meneruskan gambar dari endpoint API ke browser.
+     *
+     * Berkasnya ada di folder dokumen Dolibarr di balik endpoint ber-Authorization,
+     * sedangkan browser tidak pernah memegang api_key. Jadi diambil server ke
+     * server lalu diteruskan apa adanya. Kegagalan dikembalikan sebagai pesan di
+     * halaman detail, bukan berkas gambar rusak berisi JSON.
+     */
+    public static function teruskanGambar(string $path, int $tindakanId, string $namaBerkas)
+    {
+        $response = self::client()->get($path);
+
+        $tipe = (string) $response->header('Content-Type');
+
+        if ($response->failed() || ! str_starts_with(strtolower($tipe), 'image/')) {
+            $pesan = $response->json('message') ?? 'Bukti foto belum ada.';
+
+            return redirect()->route('tindakan.detail', $tindakanId)->with('galat', $pesan);
+        }
+
+        return response($response->body(), 200, [
+            'Content-Type' => $tipe,
+            'Content-Disposition' => 'inline; filename="' . $namaBerkas . '-' . $tindakanId . '"',
+        ]);
+    }
+
+    /**
      * Dipakai endpoint yang memang menuntut PUT (mis. ubah jadwal tindakan);
      * mengirimnya sebagai POST akan dijawab 405 oleh router.
      */

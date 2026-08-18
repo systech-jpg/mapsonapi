@@ -137,26 +137,27 @@ Route::middleware('api.auth')->group(function () {
     | berisi JSON error yang tidak bisa dibuka pembaca PDF.
     */
     /*
-    | Foto bukti tarik barang. Sama seperti surat jalan: berkasnya di balik
-    | endpoint ber-Authorization, jadi diambil server ke server lalu diteruskan.
-    | Ditampilkan inline (bukan attachment) supaya bisa langsung dilihat di tab.
+    | Foto bukti (pickup dan tarik barang). Sama seperti surat jalan: berkasnya
+    | di balik endpoint ber-Authorization, jadi diambil server ke server lalu
+    | diteruskan. Ditampilkan inline (bukan attachment) supaya bisa langsung
+    | dilihat di tab.
     */
+    Route::get('/tindakan/{id}/bukti-pickup', function (int $id) {
+        return \App\Support\Api::teruskanGambar("/tindakan/{$id}/bukti-pickup", $id, 'bukti-pickup');
+    })->whereNumber('id')->name('tindakan.bukti-pickup');
+
+    Route::get('/tindakan/{id}/bukti-arrive', function (int $id) {
+        return \App\Support\Api::teruskanGambar("/tindakan/{$id}/bukti-arrive", $id, 'bukti-arrive');
+    })->whereNumber('id')->name('tindakan.bukti-arrive');
+
     Route::get('/tindakan/{id}/bukti-tarik', function (int $id) {
-        $response = \App\Support\Api::client()->get("/tindakan/usage/{$id}/bukti-tarik");
-
-        $tipe = (string) $response->header('Content-Type');
-
-        if ($response->failed() || ! str_starts_with(strtolower($tipe), 'image/')) {
-            $pesan = $response->json('message') ?? 'Bukti tarik barang belum ada.';
-
-            return redirect()->route('tindakan.detail', $id)->with('galat', $pesan);
-        }
-
-        return response($response->body(), 200, [
-            'Content-Type' => $tipe,
-            'Content-Disposition' => 'inline; filename="bukti-tarik-' . $id . '"',
-        ]);
+        return \App\Support\Api::teruskanGambar("/tindakan/usage/{$id}/bukti-tarik", $id, 'bukti-tarik');
     })->whereNumber('id')->name('tindakan.bukti-tarik');
+
+    Route::get('/tindakan/{id}/bukti-dokumen', function (int $id) {
+        return \App\Support\Api::teruskanGambar("/tindakan/usage/{$id}/bukti-dokumen", $id, 'bukti-dokumen');
+    })->whereNumber('id')->name('tindakan.bukti-dokumen');
+
 
     Route::get('/tindakan/{id}/surat-jalan', function (int $id) {
         $response = \App\Support\Api::client()->get("/tindakan/{$id}/surat-jalan");

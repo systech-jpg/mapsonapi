@@ -455,6 +455,17 @@ class TindakanController extends Controller
             return $this->errorResponse('Data tindakan tidak ditemukan.', 404);
         }
 
+        // Klien perlu tahu bukti pickup sudah ada atau belum tanpa menembak
+        // endpoint gambarnya lebih dulu; null berarti belum diunggah. Diambil
+        // sebelum kolom status ditimpa labelnya, supaya tetap bisa dibandingkan.
+        $tindakan->bukti_pickup = $this->berkasBukti($tindakan->ref, self::BUKTI_PICKUP_PREFIX)
+            ? 'tindakan/' . (int) $id . '/bukti-pickup'
+            : null;
+
+        $tindakan->bukti_arrive = $this->berkasBukti($tindakan->ref, self::BUKTI_ARRIVE_PREFIX)
+            ? 'tindakan/' . (int) $id . '/bukti-arrive'
+            : null;
+
         // Overwrite status dengan labelnya
         $tindakan->status = $this->getStatusLabel($tindakan->status);
 
@@ -505,7 +516,11 @@ class TindakanController extends Controller
     }
 
     /**
-     * Konfirmasi Barang Sampai (Ubah status dari 2 -> 3)
+     * Konfirmasi Barang Sampai (Ubah status dari 2 -> 3), wajib membawa foto.
+     *
+     * Meniru action do_arrive di custom/tindakanmedis/prepare.php: foto ARRIVE
+     * disimpan lebih dulu, baru statusnya dinaikkan. Kalau penyimpanan gagal,
+     * dokumen tidak terlanjur Ready tanpa bukti.
      */
     public function confirmArrival(Request $request, $id)
     {
@@ -522,9 +537,27 @@ class TindakanController extends Controller
             return $this->errorResponse('Data tindakan tidak ditemukan.', 404);
         }
 
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'bukti' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:8192',
+        ], [
+            'bukti.required' => 'Foto bukti barang sampai wajib disertakan.',
+            'bukti.image' => 'Bukti barang sampai harus berupa foto.',
+            'bukti.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 422);
+        }
+
         // Pastikan statusnya 2 (In Delivery) sebelum bisa dikonfirmasi sampai
         if ($tindakan->status != 2) {
             return $this->errorResponse('Tindakan ini tidak dalam status In Delivery.', 400);
+        }
+
+        [$namaBaru, $galat] = $this->simpanBukti($tindakan->ref, self::BUKTI_ARRIVE_PREFIX, $request->file('bukti'));
+
+        if (!$namaBaru) {
+            return $this->errorResponse($galat, 500);
         }
 
         // Update status menjadi 3 (Delivered / Ready).
@@ -545,9 +578,153 @@ class TindakanController extends Controller
             ]);
         }
 
-        $this->logTindakanActivity($id, 'ARRIVAL', $user, 'Dikonfirmasi dari aplikasi mobile', 3);
+        // Action tetap ARRIVAL, bukan STATUS_DELIVERED seperti di ERP.
+        // Tindakan::getLogActionLabel() mengenal ARRIVAL dan menerjemahkannya
+        // menjadi "Barang Sampai di RS (Ready)", sedangkan STATUS_DELIVERED
+        // jatuh ke default dan tampil sebagai kode mentah di halaman riwayat.
+        $tautan = '<a href="' . $this->tautanBukti($tindakan->ref, $namaBaru) . '" target="_blank" '
+            . 'class="badge badge-info" style="color:#fff;">Lihat Bukti</a>';
 
-        return $this->successResponse(null, 'Barang dikonfirmasi sampai di RS (Ready).');
+        $this->logTindakanActivity($id, 'ARRIVAL', $user, 'Dikonfirmasi dari aplikasi mobile ' . $tautan, 3);
+
+        return $this->successResponse([
+            'ref' => $tindakan->ref,
+            'status' => 3,
+            'bukti_nama' => $namaBaru,
+            'bukti_arrive' => 'tindakan/' . (int) $id . '/bukti-arrive',
+        ], 'Barang dikonfirmasi sampai di RS (Ready).');
+    }
+
+    /**
+     * Menampilkan foto bukti barang sampai di RS.
+     */
+    public function buktiArrive(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $berkas = $this->berkasBukti($tindakan->ref, self::BUKTI_ARRIVE_PREFIX);
+
+        if (!$berkas) {
+            return $this->errorResponse('Bukti barang sampai belum diunggah.', 404);
+        }
+
+        return response()->file($berkas);
+    }
+
+    /**
+     * Upload Bukti Serah Terima Dokumen (Dokumen Diterima).
+     *
+     * Meniru action do_dok_terima di custom/tindakanmedis/usage.php: hanya
+     * menyimpan foto dan mencatat log, TIDAK mengubah status. Statusnya tetap 4;
+     * yang berubah hanya labelnya di ERP, dari "Barang Ditarik (Menunggu Dokumen
+     * Diterima)" menjadi "Dokumen Diterima (Menunggu Accept)" -- dan label itu
+     * ditentukan dari ada tidaknya berkas DOK_TERIMA, bukan dari kolom status.
+     */
+    public function dokumenTerima(Request $request, $tindakan_id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'bukti' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:8192',
+        ], [
+            'bukti.required' => 'Foto bukti serah terima dokumen wajib disertakan.',
+            'bukti.image' => 'Bukti serah terima harus berupa foto.',
+            'bukti.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 422);
+        }
+
+        $usage = DB::table('llxjp_usage_report')->where('fk_tindakan', $tindakan_id)->first();
+
+        if (!$usage) {
+            return $this->errorResponse('Laporan pemakaian belum dibuat.', 400);
+        }
+
+        // Tahap ini hanya sah setelah barang ditarik (status 4), sama dengan
+        // syarat form di halaman usage ERP.
+        if ((int) $usage->status !== 4) {
+            return $this->errorResponse('Serah terima dokumen hanya bisa setelah Barang Ditarik.', 400);
+        }
+
+        $sudahAda = $this->berkasBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX);
+        $ganti = (bool) $request->input('ganti');
+
+        if ($sudahAda && !$ganti) {
+            return $this->errorResponse(
+                'Bukti serah terima dokumen sudah tersimpan. Kirim ganti=1 bila memang ingin menggantinya.',
+                409
+            );
+        }
+
+        [$namaBaru, $galat] = $this->simpanBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX, $request->file('bukti'));
+
+        if (!$namaBaru) {
+            return $this->errorResponse($galat, 500);
+        }
+
+        $tautan = '<a href="' . $this->tautanBukti($tindakan->ref, $namaBaru) . '" target="_blank" '
+            . 'class="badge badge-info" style="color:#fff;">Lihat Bukti Dokumen</a>';
+
+        // Nama aksinya memang memakai spasi, bukan garis bawah. Halaman usage
+        // ERP mencari baris 'DOKUMEN DITERIMA' persis begitu.
+        $this->logUsageActivity(
+            $usage->rowid,
+            'DOKUMEN DITERIMA',
+            $user,
+            $sudahAda ? 'Bukti dokumen diganti ' . $tautan : $tautan,
+            $usage->status
+        );
+
+        return $this->successResponse([
+            'ref' => $usage->ref,
+            'bukti_nama' => $namaBaru,
+            'bukti_dokumen' => 'tindakan/usage/' . (int) $tindakan_id . '/bukti-dokumen',
+        ], 'Bukti serah terima dokumen berhasil disimpan.');
+    }
+
+    /**
+     * Menampilkan foto bukti serah terima dokumen.
+     */
+    public function buktiDokumen(Request $request, $tindakan_id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $berkas = $this->berkasBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX);
+
+        if (!$berkas) {
+            return $this->errorResponse('Bukti serah terima dokumen belum diunggah.', 404);
+        }
+
+        return response()->file($berkas);
     }
 
     /**
@@ -691,8 +868,12 @@ class TindakanController extends Controller
 
         // Klien perlu tahu buktinya sudah ada atau belum tanpa menembak
         // endpoint gambarnya lebih dulu; null berarti belum diunggah.
-        $usage->bukti_tarik = $this->berkasBuktiTarik($tindakan->ref)
+        $usage->bukti_tarik = $this->berkasBukti($tindakan->ref, self::BUKTI_TARIK_PREFIX)
             ? 'tindakan/usage/' . (int) $id . '/bukti-tarik'
+            : null;
+
+        $usage->bukti_dokumen = $this->berkasBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX)
+            ? 'tindakan/usage/' . (int) $id . '/bukti-dokumen'
             : null;
 
         // Paket Tray IKUT ditampilkan. getOrCreateUsageReport() menyalin produk
@@ -920,12 +1101,16 @@ class TindakanController extends Controller
     }
 
     /**
-     * Awalan nama berkas bukti untuk tahap tarik barang.
+     * Awalan nama berkas bukti per tahap.
      *
-     * Nilainya HARUS sama dengan prefix di custom/tindakanmedis/usage.php,
-     * karena halaman ERP mencari buktinya dengan glob TARIK_* — bukan dengan
-     * membaca kolom atau baris log.
+     * Nilainya HARUS sama dengan prefix di custom/tindakanmedis/ (prepare.php
+     * untuk PICKUP & ARRIVE, usage.php untuk TARIK & DOK_TERIMA), karena halaman
+     * ERP mencari buktinya dengan glob <PREFIX>_* — bukan dengan membaca kolom
+     * atau baris log.
      */
+    private const BUKTI_PICKUP_PREFIX = 'PICKUP';
+    private const BUKTI_ARRIVE_PREFIX = 'ARRIVE';
+    private const BUKTI_DOKUMEN_PREFIX = 'DOK_TERIMA';
     private const BUKTI_TARIK_PREFIX = 'TARIK';
 
     /**
@@ -967,7 +1152,7 @@ class TindakanController extends Controller
      * jadi urutan nama sama dengan urutan waktu — persis alasan yang ditulis
      * di tm_proof_files().
      */
-    private function berkasBuktiTarik($tindakanRef)
+    private function berkasBukti($tindakanRef, $prefix)
     {
         $dir = $this->direktoriBukti($tindakanRef);
 
@@ -975,7 +1160,7 @@ class TindakanController extends Controller
             return null;
         }
 
-        $berkas = glob($dir . '/' . self::BUKTI_TARIK_PREFIX . '_*');
+        $berkas = glob($dir . '/' . $prefix . '_*');
 
         if (!is_array($berkas) || empty($berkas)) {
             return null;
@@ -1063,7 +1248,7 @@ class TindakanController extends Controller
         // harus memakai zona yang sama.
         $namaBaru = self::BUKTI_TARIK_PREFIX . '_' . Carbon::now()->format('Ymd_His') . '.' . $ekstensi;
 
-        $lama = $this->berkasBuktiTarik($tindakan->ref);
+        $lama = $this->berkasBukti($tindakan->ref, self::BUKTI_TARIK_PREFIX);
 
         // Berkas baru ditulis lebih dulu, yang lama dibuang setelahnya —
         // urutan yang sama dengan tm_store_proof(), supaya kegagalan di tengah
@@ -1143,10 +1328,159 @@ class TindakanController extends Controller
             return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
         }
 
-        $berkas = $this->berkasBuktiTarik($tindakan->ref);
+        $berkas = $this->berkasBukti($tindakan->ref, self::BUKTI_TARIK_PREFIX);
 
         if (!$berkas) {
             return $this->errorResponse('Bukti tarik barang belum diunggah.', 404);
+        }
+
+        return response()->file($berkas);
+    }
+
+    /**
+     * Menyimpan satu berkas bukti ke folder dokumen Dolibarr.
+     *
+     * Berkas baru ditulis lebih dulu, yang lama dibuang setelahnya — urutan yang
+     * sama dengan tm_store_proof() di ERP, supaya kegagalan di tengah jalan tidak
+     * menyisakan dokumen tanpa bukti sama sekali.
+     *
+     * @return array [namaBerkas, pesanGalat]; namaBerkas kosong bila gagal.
+     */
+    private function simpanBukti($tindakanRef, $prefix, $berkas)
+    {
+        $dir = $this->direktoriBukti($tindakanRef);
+
+        if (!$dir) {
+            return ['', 'Folder dokumen ERP belum dikonfigurasi (ERP_DOC_ROOT). '
+                . 'Hubungi administrator: tanpa itu bukti foto tidak akan terbaca di ERP.'];
+        }
+
+        if (!is_dir($dir) && !@mkdir($dir, 0777, true) && !is_dir($dir)) {
+            return ['', 'Folder bukti di server tidak bisa dibuat. Periksa izin tulis.'];
+        }
+
+        $ekstensi = strtolower($berkas->getClientOriginalExtension() ?: $berkas->extension());
+
+        // Waktu server, sama dengan date('Ymd_His') di ERP. Urutan nama berkas
+        // inilah cara ERP menentukan bukti mana yang terbaru, jadi kedua sumber
+        // harus memakai zona yang sama.
+        $namaBaru = $prefix . '_' . Carbon::now()->format('Ymd_His') . '.' . $ekstensi;
+        $lama = $this->berkasBukti($tindakanRef, $prefix);
+
+        // move() melempar FileException saat gagal (bukan mengembalikan false),
+        // dan tanpa tangkapan ini kegagalan izin tulis muncul sebagai 500 mentah
+        // dengan jejak stack, bukan kalimat yang bisa dipahami petugas.
+        try {
+            $berkas->move($dir, $namaBaru);
+        } catch (\Throwable $e) {
+            return ['', 'Foto bukti gagal disimpan ke folder dokumen ERP. Periksa izin tulis folder.'];
+        }
+
+        if ($lama && basename($lama) !== $namaBaru && is_file($lama)) {
+            @unlink($lama);
+        }
+
+        return [$namaBaru, ''];
+    }
+
+    /**
+     * Upload Bukti Pickup (barang diambil / dijemput kurir).
+     *
+     * Meniru action do_pickup di custom/tindakanmedis/prepare.php: hanya
+     * menyimpan foto dan mencatat log, TIDAK mengubah status dokumen. Kenaikan
+     * status ke Delivered/Ready adalah tahap berikutnya (konfirmasi barang sampai).
+     *
+     * Kirim ganti=1 untuk sengaja mengganti bukti yang sudah ada; tanpa itu
+     * unggahan kedua ditolak, supaya satu kejadian tidak meninggalkan dua berkas
+     * dan dua baris log.
+     */
+    public function pickup(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'bukti' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:8192',
+        ], [
+            'bukti.required' => 'Foto bukti pickup wajib disertakan.',
+            'bukti.image' => 'Bukti pickup harus berupa foto.',
+            'bukti.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 422);
+        }
+
+        // Form pickup di ERP hanya muncul pada status 2 (In Delivery), yaitu
+        // setelah Surat Jalan terbit. Sebelum itu belum ada yang bisa diambil.
+        if ((int) $tindakan->status !== 2) {
+            return $this->errorResponse('Bukti pickup hanya bisa diunggah saat status In Delivery.', 400);
+        }
+
+        $sudahAda = $this->berkasBukti($tindakan->ref, self::BUKTI_PICKUP_PREFIX);
+        $ganti = (bool) $request->input('ganti');
+
+        if ($sudahAda && !$ganti) {
+            return $this->errorResponse(
+                'Bukti pickup sudah tersimpan. Kirim ganti=1 bila memang ingin menggantinya.',
+                409
+            );
+        }
+
+        [$namaBaru, $galat] = $this->simpanBukti($tindakan->ref, self::BUKTI_PICKUP_PREFIX, $request->file('bukti'));
+
+        if (!$namaBaru) {
+            return $this->errorResponse($galat, 500);
+        }
+
+        // Bentuk catatannya disamakan dengan tm_proof_badge() di ERP, supaya
+        // baris log dari mobile dan dari web terlihat identik di tab Log.
+        $tautan = '<a href="' . $this->tautanBukti($tindakan->ref, $namaBaru) . '" target="_blank" '
+            . 'class="badge badge-info" style="color:#fff;">Lihat Bukti Pickup</a>';
+
+        $this->logTindakanActivity(
+            $id,
+            'PICKUP',
+            $user,
+            $sudahAda ? 'Bukti pickup diganti ' . $tautan : $tautan,
+            $tindakan->status
+        );
+
+        return $this->successResponse([
+            'ref' => $tindakan->ref,
+            'bukti_nama' => $namaBaru,
+            'bukti_pickup' => 'tindakan/' . (int) $id . '/bukti-pickup',
+        ], 'Bukti pickup berhasil disimpan.');
+    }
+
+    /**
+     * Menampilkan foto bukti pickup.
+     */
+    public function buktiPickup(Request $request, $id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $berkas = $this->berkasBukti($tindakan->ref, self::BUKTI_PICKUP_PREFIX);
+
+        if (!$berkas) {
+            return $this->errorResponse('Bukti pickup belum diunggah.', 404);
         }
 
         return response()->file($berkas);
