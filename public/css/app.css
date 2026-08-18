@@ -114,6 +114,30 @@ input, select, textarea { font-size: 16px; }
   font-size: .8rem; color: var(--muted);
 }
 
+/* Tombol aksi utama halaman daftar, melayang di sudut kanan bawah.
+   Sebelumnya tombol ini digambar sebagai tombol lebar di atas daftar, dan di
+   ponsel ia ikut tergulir hilang begitu daftarnya panjang -- petugas yang
+   membuka halaman lalu menggulir tidak pernah melihatnya lagi.
+   Bentuknya pil, bukan bulat berisi ikon saja: satu tombol tambah yang cuma
+   bergambar "+" menuntut orang menebak apa yang ditambahkan. */
+.fab-aksi {
+  position: fixed; z-index: 21;
+  right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom));
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .85rem 1.35rem;
+  border-radius: 999px;
+  background: var(--gold-500);
+  color: #fff; font-weight: 700; text-decoration: none;
+  box-shadow: 0 6px 16px rgba(188, 158, 104, .45);
+}
+
+.fab-aksi i { font-size: 1.15rem; }
+
+.fab-aksi:hover, .fab-aksi:focus { background: var(--gold-400); color: #fff; }
+
+/* Ruang di dasar daftar supaya baris terakhir tidak tertutup FAB. */
+.fab-ruang { height: 5.5rem; }
+
 @media (prefers-reduced-motion: reduce) {
   .menu-card { transition: none; }
 }

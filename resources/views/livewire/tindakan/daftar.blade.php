@@ -1,8 +1,7 @@
+{{-- Tombol "Buat Jadwal" tidak di sini lagi: sekarang FAB melayang di halaman
+     pembungkus (resources/views/tindakan/index.blade.php), supaya tetap
+     terlihat sejauh apa pun daftarnya digulir. --}}
 <div>
-  <a href="{{ route('tindakan.buat') }}" wire:navigate class="btn btn-emas w-100 py-2 fw-semibold mb-3">
-    <i class="bi bi-plus-lg me-1"></i> Buat Jadwal Tindakan
-  </a>
-
   <div class="input-group mb-3">
     <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-secondary"></i></span>
     <input type="search" wire:model.live.debounce.300ms="cari" class="form-control border-start-0 ps-0"
@@ -81,4 +80,7 @@
       · {{ count($items) }} baris dimuat
     </p>
   @endif
+
+  {{-- Baris terakhir harus bisa digulir melewati FAB, bukan tertutup olehnya. --}}
+  <div class="fab-ruang"></div>
 </div>
