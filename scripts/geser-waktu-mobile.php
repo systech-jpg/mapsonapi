@@ -62,6 +62,47 @@ $tabel = [
     ],
 ];
 
+// --- Mode periksa: laporan keadaan, tidak menulis apa pun ------------------
+
+if ($MODE === 'periksa') {
+    $doc = config('services.erp.doc_root');
+
+    echo "ERP_DOC_ROOT   : " . ($doc ?: '(KOSONG — tarik barang akan ditolak)') . "\n";
+    echo "foldernya ada? : " . ($doc && is_dir($doc) ? 'ya' : 'TIDAK') . "\n";
+    echo "app.timezone   : " . config('app.timezone') . "\n";
+    echo "MAIN_SERVER_TZ : " . (DB::table('llxjp_const')->where('name', 'MAIN_SERVER_TZ')->value('value') ?: '(kosong)') . "\n";
+    echo "jam server     : " . date('Y-m-d H:i:s') . "\n";
+    echo "berkas batas   : " . (file_exists($berkasBatas) ? 'ADA' : 'BELUM DICATAT') . "\n";
+
+    if (file_exists($berkasBatas)) {
+        $s = json_decode(file_get_contents($berkasBatas), true);
+        echo "  dicatat pada : {$s['dicatat_pada']}\n";
+        echo "  sudah jalan  : " . (!empty($s['sudah_dijalankan']) ? 'YA (' . ($s['dijalankan_pada'] ?? '?') . ')' : 'belum') . "\n";
+    }
+
+    // Baris mobile terbaru menjawab pertanyaan paling penting: apakah ada tulisan
+    // BARU (sudah benar) setelah kode di-deploy. Baris yang jamnya mendekati jam
+    // server berarti ditulis kode baru dan TIDAK boleh ikut digeser.
+    echo "\nBaris log mobile terbaru:\n";
+    foreach ($tabel as $t) {
+        $baris = DB::table($t['log'])->where('source', 'MOBILE')
+            ->orderByDesc('rowid')->limit(2)->get(['rowid', 'action', 'datelog']);
+
+        echo "  {$t['log']}:\n";
+        foreach ($baris as $b) {
+            $selisihJam = round((time() - strtotime($b->datelog)) / 3600, 1);
+            echo "    #{$b->rowid} {$b->action} {$b->datelog} ({$selisihJam} jam lalu)\n";
+        }
+    }
+
+    echo "\nCara membaca: bila baris teratas berjarak sekitar 7 jam ATAU LEBIH dan\n";
+    echo "tidak ada aktivitas mobile sejak deploy, semuanya masih gaya lama dan aman\n";
+    echo "dicatat sekarang. Bila ada baris yang jaraknya beberapa menit saja, itu\n";
+    echo "tulisan kode baru yang sudah benar — laporkan dulu sebelum menggeser.\n";
+
+    return;
+}
+
 // --- Langkah 1: catat batas ------------------------------------------------
 
 if ($MODE === 'catat') {
