@@ -689,6 +689,12 @@ class TindakanController extends Controller
 
         $usage->status_label = $this->getUsageStatusLabel($usage->status);
 
+        // Klien perlu tahu buktinya sudah ada atau belum tanpa menembak
+        // endpoint gambarnya lebih dulu; null berarti belum diunggah.
+        $usage->bukti_tarik = $this->berkasBuktiTarik($tindakan->ref)
+            ? 'tindakan/usage/' . (int) $id . '/bukti-tarik'
+            : null;
+
         // Paket Tray IKUT ditampilkan. getOrCreateUsageReport() menyalin produk
         // dari SELURUH kit tanpa memfilter jenis, jadi baris tray memang ada di
         // llxjp_usage_report_det dan tampil di halaman ERP. Sebelumnya bagian ini
@@ -705,6 +711,38 @@ class TindakanController extends Controller
         ];
 
         return $this->successResponse($data, 'Berhasil mengambil data Usage Report.');
+    }
+
+    /**
+     * Mencari baris Usage Report yang ditunjuk satu item payload.
+     *
+     * Identifier yang diterima sengaja lebih dari satu (det_id, fk_product,
+     * product_id) karena versi klien yang beredar tidak seragam. Dipakai
+     * bersama oleh pemeriksaan batas qty dan proses simpannya, supaya keduanya
+     * tidak mungkin menunjuk baris yang berbeda.
+     *
+     * @return \Illuminate\Database\Query\Builder|null null bila payload tidak
+     *         membawa satu pun identifier yang dikenali.
+     */
+    private function cariBarisUsage($usageId, array $line)
+    {
+        $query = DB::table('llxjp_usage_report_det as d')
+            ->leftJoin('llxjp_product as p', 'p.rowid', '=', 'd.fk_product')
+            ->where('d.fk_usage_report', $usageId);
+
+        if (!empty($line['det_id'])) {
+            return $query->where('d.rowid', $line['det_id']);
+        }
+
+        if (!empty($line['fk_product'])) {
+            return $query->where('d.fk_product', $line['fk_product']);
+        }
+
+        if (!empty($line['product_id'])) {
+            return $query->where('d.fk_product', $line['product_id']);
+        }
+
+        return null;
     }
 
     /**
@@ -747,6 +785,36 @@ class TindakanController extends Controller
 
         if (empty($lines) || !is_array($lines)) {
             return $this->errorResponse('Format data lines tidak valid atau kosong.', 400);
+        }
+
+        // Batas qty diperiksa lebih dulu, sebelum satu baris pun ditulis.
+        // Tanpa ini qty_used boleh melebihi qty_sent, dan kolom Qty Kembali di
+        // halaman usage ERP maupun di surat jalan menjadi negatif -- dokumennya
+        // seolah mengembalikan barang yang tidak pernah dikirim.
+        // Diperiksa semuanya dulu, baru ditolak sekaligus, supaya petugas tidak
+        // membetulkan satu baris lalu ditolak lagi karena baris berikutnya.
+        $ditolak = [];
+
+        foreach ($lines as $line) {
+            $qty_used = $line['qty_used'] ?? $line['qty'] ?? $line['used'] ?? null;
+            if ($qty_used === null || $qty_used === '') continue;
+
+            $target = $this->cariBarisUsage($usage->rowid, $line);
+            if (!$target) continue; // identifier tidak dikenali; ditangani di bawah
+
+            foreach ($target->select('d.qty_sent', 'p.ref')->get() as $row) {
+                if ((int) $qty_used < 0 || (int) $qty_used > (int) $row->qty_sent) {
+                    $ditolak[] = ($row->ref ?: 'Produk')
+                        . ' (dikirim ' . (int) $row->qty_sent . ', diisi ' . (int) $qty_used . ')';
+                }
+            }
+        }
+
+        if (!empty($ditolak)) {
+            return $this->errorResponse(
+                'Qty terpakai tidak boleh melebihi qty dikirim: ' . implode('; ', $ditolak) . '.',
+                422
+            );
         }
 
         DB::beginTransaction();
@@ -852,12 +920,95 @@ class TindakanController extends Controller
     }
 
     /**
+     * Awalan nama berkas bukti untuk tahap tarik barang.
+     *
+     * Nilainya HARUS sama dengan prefix di custom/tindakanmedis/usage.php,
+     * karena halaman ERP mencari buktinya dengan glob TARIK_* — bukan dengan
+     * membaca kolom atau baris log.
+     */
+    private const BUKTI_TARIK_PREFIX = 'TARIK';
+
+    /**
+     * Salinan dol_sanitizeFileName() Dolibarr seperlunya: karakter terlarang
+     * diganti '_'. Wajib sama hasilnya, karena nama folder bukti dibentuk dari
+     * Ref Tindakan di kedua sisi ("TD/2608/00572" -> "TD_2608_00572"). Kalau
+     * beda satu karakter saja, ERP dan mobile menulis ke folder yang berlainan.
+     */
+    private function sanitasiNamaBerkas($nama)
+    {
+        $terlarang = ['<', '>', '/', '\\', '?', '*', '|', '"', ':', '°', '$', ';', '`'];
+
+        $hasil = str_replace($terlarang, '_', (string) $nama);
+        $hasil = preg_replace('/\-\-+/', '_', $hasil);
+
+        return str_replace('..', '', $hasil);
+    }
+
+    /**
+     * Folder bukti satu Tindakan di dalam dokumen Dolibarr.
+     *
+     * @return string|null null bila ERP_DOC_ROOT belum diisi — sengaja tidak
+     *                     jatuh ke folder lain, karena bukti yang tersimpan di
+     *                     tempat yang tidak dibaca ERP sama saja hilang.
+     */
+    private function direktoriBukti($tindakanRef)
+    {
+        $akar = config('services.erp.doc_root');
+
+        if (blank($akar) || blank($tindakanRef)) {
+            return null;
+        }
+
+        return rtrim($akar, "/\\") . '/' . $this->sanitasiNamaBerkas($tindakanRef);
+    }
+
+    /**
+     * Berkas bukti terbaru untuk satu tahap. Nama berkas memuat timestamp,
+     * jadi urutan nama sama dengan urutan waktu — persis alasan yang ditulis
+     * di tm_proof_files().
+     */
+    private function berkasBuktiTarik($tindakanRef)
+    {
+        $dir = $this->direktoriBukti($tindakanRef);
+
+        if (!$dir || !is_dir($dir)) {
+            return null;
+        }
+
+        $berkas = glob($dir . '/' . self::BUKTI_TARIK_PREFIX . '_*');
+
+        if (!is_array($berkas) || empty($berkas)) {
+            return null;
+        }
+
+        rsort($berkas);
+
+        return $berkas[0];
+    }
+
+    /**
+     * Tautan document.php ke satu berkas bukti, sama bentuknya dengan yang
+     * dibuat UsageReport::tarikBarang() di ERP supaya baris log dari mobile
+     * dan dari web terlihat identik di tab Log.
+     */
+    private function tautanBukti($tindakanRef, $namaBerkas)
+    {
+        $berkas = $this->sanitasiNamaBerkas($tindakanRef) . '/' . $namaBerkas;
+
+        return rtrim((string) config('services.erp.url_root'), '/')
+            . '/document.php?modulepart=tindakanmedis&file=' . urlencode($berkas);
+    }
+
+    /**
      * Tarik Barang Usage Report (Status 1 -> 4).
+     *
+     * Wajib menyertakan foto bukti (field `bukti`), mengikuti form Tarik Barang
+     * di halaman usage ERP. Requestnya harus multipart/form-data.
      */
     public function tarikBarang(Request $request, $tindakan_id)
     {
         $user = $request->attributes->get('dolibarr_user');
-        
+
         if (!$user) {
             return $this->errorResponse('User tidak terautentikasi.', 401);
         }
@@ -868,10 +1019,70 @@ class TindakanController extends Controller
             return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
         }
 
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            // Daftar ekstensi mengikuti tm_proof_allowed_ext() di ERP, dikurangi
+            // heic/pdf yang tidak bisa ditampilkan langsung sebagai <img> di web.
+            // 8 MB: foto kamera ponsel masa kini bisa lewat 4 MB, tapi di atas
+            // itu hampir pasti salah unggah.
+            'bukti' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:8192',
+        ], [
+            'bukti.required' => 'Foto bukti tarik barang wajib disertakan.',
+            'bukti.image' => 'Bukti tarik barang harus berupa foto.',
+            'bukti.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 422);
+        }
+
+        $dir = $this->direktoriBukti($tindakan->ref);
+
+        if (!$dir) {
+            return $this->errorResponse(
+                'Folder dokumen ERP belum dikonfigurasi (ERP_DOC_ROOT). '
+                . 'Hubungi administrator: tanpa itu bukti foto tidak akan terbaca di ERP.',
+                500
+            );
+        }
+
+        if (!is_dir($dir) && !@mkdir($dir, 0777, true) && !is_dir($dir)) {
+            return $this->errorResponse('Folder bukti di server tidak bisa dibuat. Periksa izin tulis.', 500);
+        }
+
         $usage = $this->getOrCreateUsageReport($tindakan, $user);
 
         if ($usage->status != 1) {
             return $this->errorResponse('Gagal Tarik Barang: Usage Report harus dalam status Validated.', 400);
+        }
+
+        $berkas = $request->file('bukti');
+        $ekstensi = strtolower($berkas->getClientOriginalExtension() ?: $berkas->extension());
+
+        // Waktu server, sama dengan date('Ymd_His') di ERP. Urutan nama berkas
+        // inilah cara ERP menentukan bukti mana yang terbaru, jadi kedua sumber
+        // harus memakai zona yang sama.
+        $namaBaru = self::BUKTI_TARIK_PREFIX . '_' . Carbon::now()->format('Ymd_His') . '.' . $ekstensi;
+
+        $lama = $this->berkasBuktiTarik($tindakan->ref);
+
+        // Berkas baru ditulis lebih dulu, yang lama dibuang setelahnya —
+        // urutan yang sama dengan tm_store_proof(), supaya kegagalan di tengah
+        // jalan tidak menyisakan dokumen tanpa bukti sama sekali.
+        //
+        // move() melempar FileException saat gagal (bukan mengembalikan false),
+        // dan tanpa tangkapan ini kegagalan izin tulis muncul sebagai 500 mentah
+        // dengan jejak stack, bukan kalimat yang bisa dipahami petugas.
+        try {
+            $berkas->move($dir, $namaBaru);
+        } catch (\Throwable $e) {
+            return $this->errorResponse(
+                'Foto bukti gagal disimpan ke folder dokumen ERP. Periksa izin tulis folder.',
+                500
+            );
+        }
+
+        if ($lama && basename($lama) !== $namaBaru && is_file($lama)) {
+            @unlink($lama);
         }
 
         DB::beginTransaction();
@@ -886,16 +1097,59 @@ class TindakanController extends Controller
 
             DB::commit();
 
-            $this->logUsageActivity($usage->rowid, 'TARIK_BARANG', $user, 'Ditarik dari aplikasi mobile', 4);
+            // Catatan log memuat tautan HTML yang sama dengan buatan ERP, jadi
+            // tombol "Lihat Bukti" di tab Log bekerja untuk kedua sumber.
+            $this->logUsageActivity(
+                $usage->rowid,
+                'TARIK_BARANG',
+                $user,
+                '<a href="' . $this->tautanBukti($tindakan->ref, $namaBaru) . '" target="_blank" '
+                    . 'class="badge badge-info" style="color:#fff;">Lihat Bukti</a>',
+                4
+            );
 
             return $this->successResponse([
                 'ref' => $usage->ref,
-                'status' => 4
+                'status' => 4,
+                'bukti_nama' => $namaBaru,
+                // Path relatif terhadap root API, tanpa host -- host dari request
+                // salah di belakang tunnel/proxy. Pola yang sama dipakai lampiran
+                // chat; setiap klien menyusunnya dari base URL-nya sendiri.
+                'bukti_tarik' => 'tindakan/usage/' . (int) $tindakan_id . '/bukti-tarik',
             ], 'Barang berhasil ditarik (Tarik Barang).');
         } catch (\Exception $e) {
             DB::rollBack();
             return $this->errorResponse('Terjadi kesalahan saat proses Tarik Barang: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Menampilkan foto bukti tarik barang.
+     *
+     * Berkasnya ada di folder dokumen Dolibarr yang tidak bisa diakses browser
+     * langsung, jadi disajikan lewat endpoint ini yang sudah melewati
+     * middleware dolibarr.auth.
+     */
+    public function buktiTarik(Request $request, $tindakan_id)
+    {
+        $user = $request->attributes->get('dolibarr_user');
+
+        if (!$user) {
+            return $this->errorResponse('User tidak terautentikasi.', 401);
+        }
+
+        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
+        if (!$tindakan) {
+            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
+        }
+
+        $berkas = $this->berkasBuktiTarik($tindakan->ref);
+
+        if (!$berkas) {
+            return $this->errorResponse('Bukti tarik barang belum diunggah.', 404);
+        }
+
+        return response()->file($berkas);
     }
 
     /**

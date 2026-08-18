@@ -60,6 +60,28 @@ class Api
     }
 
     /**
+     * POST multipart untuk endpoint yang menerima berkas (mis. bukti foto
+     * tarik barang). Isinya dikirim sebagai string, bukan path, karena berkas
+     * unggahan Livewire masih berada di direktori sementara yang bisa
+     * dibersihkan kapan saja.
+     */
+    public static function unggah(string $path, string $field, string $isi, string $namaBerkas, array $data = []): array
+    {
+        return self::handle(
+            self::client()->attach($field, $isi, $namaBerkas)->post($path, $data)
+        );
+    }
+
+    /**
+     * Dipakai endpoint yang memang menuntut PUT (mis. ubah jadwal tindakan);
+     * mengirimnya sebagai POST akan dijawab 405 oleh router.
+     */
+    public static function put(string $path, array $data = []): array
+    {
+        return self::handle(self::client()->put($path, $data));
+    }
+
+    /**
      * Buang session lalu lempar ke login bila API menolak token.
      */
     protected static function handle(Response $response): array

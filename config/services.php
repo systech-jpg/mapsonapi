@@ -44,6 +44,23 @@ return [
     | Base URL API yang dipanggil frontend PWA. Saat ini menunjuk ke aplikasi
     | ini sendiri, karena routes/api.php berada di project yang sama.
     */
+    /*
+    | Dolibarr (ERP) di sisi berkas, bukan database.
+    |
+    | doc_root menunjuk ke folder bukti modul tindakanmedis, yaitu
+    | <DOL_DATA_ROOT>/tindakanmedis — nilai yang sama dengan yang dipakai
+    | tm_proof_dir() di custom/tindakanmedis/lib/tindakanmedis_proof.lib.php.
+    | Bukti foto dari mobile ditulis ke sana supaya muncul di halaman usage ERP.
+    |
+    | url_root adalah DOL_URL_ROOT: kosong bila Dolibarr dipasang di akar
+    | domain, atau '/dolibarr' bila di dalam subfolder. Dipakai menyusun tautan
+    | document.php yang disimpan di catatan log.
+    */
+    'erp' => [
+        'doc_root' => env('ERP_DOC_ROOT'),
+        'url_root' => env('ERP_URL_ROOT', ''),
+    ],
+
     'backend' => [
         'url' => env('API_BASE_URL'),
     ],

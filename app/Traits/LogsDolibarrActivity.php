@@ -30,20 +30,31 @@ trait LogsDolibarrActivity
     private const FORECAST_LOG_TABLE = 'llxjp_forecast_activity_log';
 
     /**
-     * Waktu sekarang dalam konvensi penyimpanan Dolibarr: UTC.
+     * Waktu sekarang dalam konvensi penyimpanan Dolibarr: waktu server, BUKAN UTC.
      *
-     * WAJIB dipakai untuk SEMUA kolom datetime di tabel llxjp_*, bukan
-     * Carbon::now(). config/app.php memakai Asia/Jakarta, sedangkan Dolibarr
-     * menyimpan UTC dan menampilkannya lewat dol_print_date(..., 'gmt') sebagai
-     * "PHP Time (server)" lalu menambah offset user untuk "Client time".
+     * Dulu di sini dipakai Carbon::now('UTC') dengan anggapan Dolibarr menyimpan
+     * GMT. Itu keliru, dan buktinya bisa ditelusuri sendiri:
      *
-     * Kalau Carbon::now() yang dipakai, baris dari mobile tersimpan 7 jam lebih
-     * maju daripada baris dari ERP. Akibatnya bukan cuma tampil salah: riwayat
-     * jadi salah URUT, aksi web yang terjadi belakangan menyembul ke paling atas.
+     *   1. Semua kolom datetime ditulis lewat DoliDB::idate($ts, $gm = 'tzserver')
+     *      -- lihat core/db/DoliDB.class.php, parameter defaultnya 'tzserver',
+     *      bahkan ada TODO yang mengakui idealnya 'gmt' tapi belum diubah.
+     *   2. Zona server dipaksa dari konstanta MAIN_SERVER_TZ (Asia/Jakarta)
+     *      lewat date_default_timezone_set() di core/class/conf.class.php.
+     *   3. Berkas bukti PICKUP_20260818_103029.png dan baris log PICKUP-nya
+     *      sama-sama bertanda 10:30:29, padahal berkas dinamai date('Ymd_His')
+     *      yang jelas waktu lokal.
+     *
+     * Karena baris dari mobile memakai UTC, riwayatnya tersimpan 7 jam lebih
+     * MUNDUR daripada baris ERP. Halaman history.php mengurutkan dengan
+     * ORDER BY datelog ASC, sehingga aksi mobile yang terjadi belakangan
+     * tampil di urutan paling awal -- persis keluhan "log tidak sesuai proses".
+     *
+     * Syaratnya: config/app.php harus memakai zona yang sama dengan
+     * MAIN_SERVER_TZ di ERP. Keduanya kini Asia/Jakarta.
      */
     protected function dolibarrNow()
     {
-        return Carbon::now('UTC');
+        return Carbon::now();
     }
 
     /**

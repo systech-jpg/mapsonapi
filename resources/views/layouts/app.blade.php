@@ -18,35 +18,45 @@
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css" rel="stylesheet">
-  <link href="{{ asset('css/app.css') }}" rel="stylesheet">
+  {{-- Ditandai versi berkasnya. Tanpa ini URL-nya tidak pernah berubah, dan
+       browser -- yang tidak menerima header Cache-Control dari Apache -- boleh
+       menyajikan salinan lama tanpa menghubungi server, sehingga perubahan
+       tampilan tidak pernah terlihat di perangkat yang sudah pernah membuka. --}}
+  <link href="{{ asset('css/app.css') }}?v={{ filemtime(public_path('css/app.css')) }}" rel="stylesheet">
   @livewireStyles
 </head>
-<body>
+{{-- Halaman kerja yang penuh isian (mis. tabel Forecast) menyatakan
+     @section('tanpa-menu') supaya tab bar dan FAB Scan tidak ikut digambar.
+     Keduanya menempati dasar layar dan bertabrakan dengan bilah aksi halaman,
+     sekaligus memakan ruang yang justru dibutuhkan daftarnya. --}}
+<body class="@hasSection('tanpa-menu') tanpa-menu @endif">
 
   <main>
     @yield('content')
   </main>
 
-  {{-- Tab bar: slot tengah dikosongkan supaya tidak tertimpa FAB Scan. --}}
-  <nav class="tabbar">
-    <a href="{{ route('home') }}" wire:navigate class="{{ request()->routeIs('home') ? 'active' : '' }}">
-      <i class="bi bi-house-door-fill"></i>
-      <span>Home</span>
+  @sectionMissing('tanpa-menu')
+    {{-- Tab bar: slot tengah dikosongkan supaya tidak tertimpa FAB Scan. --}}
+    <nav class="tabbar">
+      <a href="{{ route('home') }}" wire:navigate class="{{ request()->routeIs('home') ? 'active' : '' }}">
+        <i class="bi bi-house-door-fill"></i>
+        <span>Home</span>
+      </a>
+
+      <span class="slot-tengah"></span>
+
+      <a href="{{ route('profil') }}" wire:navigate class="{{ request()->routeIs('profil') ? 'active' : '' }}">
+        <i class="bi bi-person-fill"></i>
+        <span>Profile</span>
+      </a>
+    </nav>
+
+    {{-- Tanpa wire:navigate: halaman scan perlu inisialisasi kamera dari awal. --}}
+    <a href="{{ route('scan') }}" class="fab-scan" aria-label="Pindai kode">
+      <i class="bi bi-camera-fill"></i>
     </a>
-
-    <span class="slot-tengah"></span>
-
-    <a href="{{ route('profil') }}" wire:navigate class="{{ request()->routeIs('profil') ? 'active' : '' }}">
-      <i class="bi bi-person-fill"></i>
-      <span>Profile</span>
-    </a>
-  </nav>
-
-  {{-- Tanpa wire:navigate: halaman scan perlu inisialisasi kamera dari awal. --}}
-  <a href="{{ route('scan') }}" class="fab-scan" aria-label="Pindai kode">
-    <i class="bi bi-camera-fill"></i>
-  </a>
-  <span class="fab-label">Scan</span>
+    <span class="fab-label">Scan</span>
+  @endif
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
   @livewireScripts

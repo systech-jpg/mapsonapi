@@ -108,8 +108,83 @@ Route::middleware('api.auth')->group(function () {
     })->name('push.subscribe');
     Route::get('/stocktake', fn () => view('stocktake.index'))->name('stocktake');
     Route::get('/tindakan', fn () => view('tindakan.index'))->name('tindakan');
+    Route::get('/tindakan/buat', fn () => view('tindakan.form', ['id' => null]))->name('tindakan.buat');
+
+    Route::get('/tindakan/{id}', fn (int $id) => view('tindakan.detail', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('tindakan.detail');
+
+    Route::get('/tindakan/{id}/ubah', fn (int $id) => view('tindakan.form', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('tindakan.ubah');
+
+    /*
+    | Pratinjau laporan pemakaian sebelum divalidasi. Halaman terpisah, bukan
+    | dialog, supaya alamatnya bisa dibuka lagi setelah halaman ditutup --
+    | validasi sering ditunda sampai barang selesai dihitung di ruang operasi.
+    */
+    Route::get('/tindakan/{id}/pratinjau', fn (int $id) => view('tindakan.pratinjau', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('tindakan.pratinjau');
+
+    /*
+    | Surat jalan PDF.
+    |
+    | Berkasnya hanya ada di endpoint API yang menuntut header Authorization,
+    | sementara browser tidak pernah memegang api_key (disimpan di session
+    | server). Jadi PDF-nya diambil server ke server lalu diteruskan apa adanya.
+    | Kegagalan dikembalikan sebagai pesan di halaman detail, bukan file PDF
+    | berisi JSON error yang tidak bisa dibuka pembaca PDF.
+    */
+    /*
+    | Foto bukti tarik barang. Sama seperti surat jalan: berkasnya di balik
+    | endpoint ber-Authorization, jadi diambil server ke server lalu diteruskan.
+    | Ditampilkan inline (bukan attachment) supaya bisa langsung dilihat di tab.
+    */
+    Route::get('/tindakan/{id}/bukti-tarik', function (int $id) {
+        $response = \App\Support\Api::client()->get("/tindakan/usage/{$id}/bukti-tarik");
+
+        $tipe = (string) $response->header('Content-Type');
+
+        if ($response->failed() || ! str_starts_with(strtolower($tipe), 'image/')) {
+            $pesan = $response->json('message') ?? 'Bukti tarik barang belum ada.';
+
+            return redirect()->route('tindakan.detail', $id)->with('galat', $pesan);
+        }
+
+        return response($response->body(), 200, [
+            'Content-Type' => $tipe,
+            'Content-Disposition' => 'inline; filename="bukti-tarik-' . $id . '"',
+        ]);
+    })->whereNumber('id')->name('tindakan.bukti-tarik');
+
+    Route::get('/tindakan/{id}/surat-jalan', function (int $id) {
+        $response = \App\Support\Api::client()->get("/tindakan/{$id}/surat-jalan");
+
+        $tipe = $response->header('Content-Type');
+
+        if ($response->failed() || ! str_contains(strtolower($tipe), 'pdf')) {
+            $pesan = $response->json('message') ?? 'Surat jalan belum bisa diunduh.';
+
+            return redirect()->route('tindakan.detail', $id)->with('galat', $pesan);
+        }
+
+        return response($response->body(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="surat-jalan-' . $id . '.pdf"',
+        ]);
+    })->whereNumber('id')->name('tindakan.surat-jalan');
     Route::get('/sales-order', fn () => view('sales-order.index'))->name('sales-order');
     Route::get('/forecast', fn () => view('forecast.index'))->name('forecast');
+
+    /*
+    | Tabel pengisian qty. Dokumen forecast dibuat lebih dulu di /forecast,
+    | karena server men-generate snapshot stok saat header dibuat -- tidak ada
+    | endpoint untuk menyiapkan tabel tanpa dokumen.
+    */
+    Route::get('/forecast/{id}', fn (int $id) => view('forecast.produk', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('forecast.produk');
     Route::get('/sph', fn () => view('sph.index'))->name('sph');
     Route::get('/scan', fn () => view('scan'))->name('scan');
     Route::get('/profil', fn () => view('profil'))->name('profil');

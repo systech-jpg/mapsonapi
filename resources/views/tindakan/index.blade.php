@@ -1,4 +1,3 @@
-{{-- Placeholder: isi modul dikerjakan setelah plan PWA selesai. --}}
 @extends('layouts.app')
 
 @section('title', 'Tindakan')
@@ -6,11 +5,17 @@
 @section('content')
   <header class="app-header">
     <h1>Tindakan</h1>
+    <p>Jadwal Operasi</p>
   </header>
 
   <div class="px-3" style="margin-top: -3rem;">
-    <div class="bg-white rounded-4 p-4 shadow-sm">
-      <p class="text-secondary mb-0">Halaman ini belum diisi.</p>
-    </div>
+    @if (session('pesan'))
+      <div class="alert alert-success d-flex align-items-center gap-2">
+        <i class="bi bi-check-circle-fill"></i>
+        <span>{{ session('pesan') }}</span>
+      </div>
+    @endif
+
+    @livewire('tindakan.daftar')
   </div>
 @endsection

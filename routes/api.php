@@ -67,6 +67,9 @@ Route::middleware('dolibarr.auth')->group(function () {
     Route::post('/tindakan/usage/{usage_id}/save-lines', [TindakanController::class, 'saveUsageLines']);
     Route::post('/tindakan/usage/{usage_id}/validate', [TindakanController::class, 'validateUsage']);
     Route::post('/tindakan/usage/{usage_id}/tarik-barang', [TindakanController::class, 'tarikBarang']);
+    // Foto bukti tarik barang. Disimpan di storage/app, bukan public/, jadi
+    // hanya bisa dibaca lewat route ini yang ikut middleware dolibarr.auth.
+    Route::get('/tindakan/usage/{usage_id}/bukti-tarik', [TindakanController::class, 'buktiTarik']);
 
     // Rute Sales Orders
     Route::get('/sales-orders', [SalesOrderController::class, 'index']);
