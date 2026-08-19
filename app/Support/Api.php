@@ -33,11 +33,29 @@ class Api
 
         $request = Http::baseUrl($baseUrl)
             ->acceptJson()
-            ->timeout(20)
-            // Hanya ulangi saat koneksi gagal. Status 4xx/5xx sengaja tidak
-            // di-retry supaya POST tidak terkirim dua kali dan 401 langsung
-            // ditangani di bawah.
-            ->retry(2, 200, fn ($e) => $e instanceof ConnectionException, throw: false);
+            /*
+            | 15 detik, bukan 20. Batas waktu eksekusi PHP di Herd adalah 30
+            | detik, dan panggilan ini terjadi DI DALAM request lain — jadi
+            | angkanya harus menyisakan ruang, kalau tidak yang muncul bukan
+            | pesan galat melainkan fatal error "Maximum execution time".
+            */
+            ->timeout(15)
+            /*
+            | Hanya ulangi saat koneksi gagal. Status 4xx/5xx sengaja tidak
+            | di-retry supaya POST tidak terkirim dua kali dan 401 langsung
+            | ditangani di bawah.
+            |
+            | Kehabisan waktu DIKECUALIKAN dari pengulangan walau Laravel ikut
+            | membungkusnya sebagai ConnectionException. Percobaan pertama saja
+            | sudah 15 detik; percobaan kedua pasti menabrak batas 30 detik PHP
+            | dan berubah menjadi fatal error -- halaman putih, bukan pesan.
+            | Kejadian nyatanya tercatat di laravel.log 19 Agustus 2026 11:18:31.
+            | cURL error 28 adalah kode untuk kehabisan waktu.
+            */
+            ->retry(2, 200, function ($e) {
+                return $e instanceof ConnectionException
+                    && ! str_contains($e->getMessage(), 'cURL error 28');
+            }, throw: false);
 
         if ($token = session('api_token')) {
             $request = $request->withToken($token);

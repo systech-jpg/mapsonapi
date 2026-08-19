@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Models\DolibarrUser;
+use App\Support\MenuBeranda;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -56,21 +57,17 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::middleware('api.auth')->group(function () {
     /*
-    | Daftar menu sengaja statis. Endpoint /api/menus memang memfilter per role,
-    | tapi isinya menargetkan Android (route-nya berupa nama Activity seperti
-    | "HomeActivity", ikonnya URL gambar), sehingga tidak bisa dipetakan ke route
-    | web di bawah. Lihat catatan di README bila nanti dibuat sumber menu khusus web.
+    | Menu beranda mengikuti penugasan "ASSIGN USER" di halaman menu ERP —
+    | sumber yang sama dengan aplikasi Android. Pemetaan route Android ke route
+    | web ada di App\Support\MenuBeranda.
     */
     Route::get('/', function () {
-        $menu = [
-            ['label' => 'Stocktake',   'route' => 'stocktake',   'icon' => 'bi-list-ul'],
-            ['label' => 'Tindakan',    'route' => 'tindakan',    'icon' => 'bi-file-earmark-plus-fill'],
-            ['label' => 'Sales Order', 'route' => 'sales-order', 'icon' => 'bi-file-earmark-text-fill'],
-            ['label' => 'Forecast',    'route' => 'forecast',    'icon' => 'bi-graph-up-arrow'],
-            ['label' => 'SPH',         'route' => 'sph',         'icon' => 'bi-file-earmark-ruled-fill'],
-        ];
+        $hasil = MenuBeranda::untukPenggunaSaatIni();
 
-        return view('home', compact('menu'));
+        return view('home', [
+            'menu' => $hasil['menu'],
+            'galatMenu' => $hasil['galat'],
+        ]);
     })->name('home');
 
     Route::get('/pesan', fn () => view('pesan'))->name('pesan');

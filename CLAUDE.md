@@ -120,7 +120,20 @@ dalamnya sering menjelaskan bug yang sudah pernah terjadi.
 7. **Jangan pakai modal bawaan Bootstrap** bersama Livewire. Pakai pola
    `.sheet` + `.sheet-backdrop` yang sudah ada di `public/css/app.css`.
 
-8. **Penanda memuat cuma satu, dan tempatnya di layout — jangan bikin lagi
+8. **Menu beranda PWA datang dari ERP, bukan dari kode.** `App\Support\MenuBeranda`
+   memanggil `GET /api/fragment-menus` — endpoint yang sama dengan Android,
+   membaca `llxjp_android_fragment_menus` + `llxjp_android_fragment_menu_user`.
+   Jadi tombol **ASSIGN USER** di halaman menu ERP berlaku untuk kedua aplikasi
+   sekaligus. Catatan lama di `routes/web.php` yang menyebut daftar menu
+   "sengaja statis" sudah tidak berlaku.
+
+   Kolom `route` di ERP berisi nama tujuan Android (`nav_stocktake`,
+   `nav_request_stock`, …), jadi ada peta kecil `MenuBeranda::PETA` yang
+   menerjemahkannya ke nama route web berikut ikon Bootstrap-nya. **Menu ERP
+   yang belum ada di peta itu dilewati diam-diam** — kalau menambah menu baru
+   di ERP dan ia tidak muncul di PWA, di situlah tempat menambahkannya.
+
+9. **Penanda memuat cuma satu, dan tempatnya di layout — jangan bikin lagi
    per halaman.** `#pemuat` di `resources/views/layouts/app.blade.php` menyala
    untuk tiga hal sekaligus: muat halaman pertama/refresh, perpindahan
    `wire:navigate`, dan setiap permintaan komponen Livewire (lewat
@@ -349,6 +362,25 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     `qty_physical` selalu dihitung ulang di server sebagai rak + tray +
     container dan tidak pernah diterima dari klien, meniru `calcQty()` di ERP.
     Menulis hanya boleh saat status dokumen 0 (Draft); 1 dan 2 dijawab 409.
+
+18. **Kolom baru di `custom/*/sql/llx_*.sql` TIDAK pernah sampai ke server yang
+    tabelnya sudah ada.** Berkas itu memakai `CREATE TABLE IF NOT EXISTS`, jadi
+    begitu tabelnya ada, seluruh isi berkas dilewati — termasuk kolom yang baru
+    ditambahkan. Menonaktifkan lalu mengaktifkan ulang modul di ERP tidak
+    menolong sama sekali.
+
+    Sudah menggigit sekali: `llxjp_sph` di server dibuat dari definisi lama
+    (`custom/sph/sql/legacy/llxjp_sph.superseded.sql`) yang belum punya
+    `ref_quotation` dan `fk_principal`. Di mesin lokal kedua kolom itu ada,
+    sehingga `GET /api/sph` menjawab 200 di sini tapi 500 di server dengan
+    `Unknown column 't.fk_principal' in 'on clause'`. Perbaikannya ALTER TABLE
+    manual di server, bukan tambalan di kode — kolomnya memang bagian dari
+    rancangan modul dan dipakai `card.php` maupun PDF-nya.
+
+    Jadi setiap kali menambah kolom ke definisi tabel modul ERP, tulis juga
+    perintah ALTER-nya untuk server yang sudah berjalan. Bandingkan dengan
+    `SHOW COLUMNS FROM <tabel>` sebelum menyalahkan kode aplikasi: gejalanya
+    selalu berupa jalan di lokal, gagal di server.
 
 ---
 
