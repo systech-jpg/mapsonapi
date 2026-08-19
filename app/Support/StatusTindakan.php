@@ -41,6 +41,11 @@ class StatusTindakan
             self::ada($teks, 'Validated'),
             self::ada($teks, 'Created') => 'hijau',
 
+            // --- Status Stocktake ---
+            // Approved berarti stok sudah dikoreksi lewat approve_and_adjust(),
+            // satu tingkat lebih jauh dari Validated, jadi warnanya dibedakan.
+            self::ada($teks, 'Approved') => 'toska',
+
             default => 'netral',
         };
     }

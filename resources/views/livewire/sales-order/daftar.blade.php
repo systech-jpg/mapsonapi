@@ -12,14 +12,10 @@
            placeholder="Cari ref atau pelanggan" aria-label="Cari">
   </div>
 
-  {{-- wire:loading bekerja selama request berlangsung; flag PHP biasa tidak
-       akan pernah terlihat karena pengambilan datanya sinkron. --}}
-  <div wire:loading class="text-center text-secondary py-4">
-    <div class="spinner-border spinner-border-sm" role="status"></div>
-    <span class="ms-2">Memuat…</span>
-  </div>
-
-  <div wire:loading.remove>
+  {{-- Penanda memuat tidak lagi digambar di sini. Sekarang ada satu penanda
+       bersama di layouts/app.blade.php yang menyala untuk SEMUA permintaan di
+       semua halaman, termasuk halaman yang tidak punya blok seperti ini. --}}
+  <div>
     @if ($galat)
       <div class="alert alert-danger d-flex align-items-center gap-2">
         <i class="bi bi-exclamation-octagon-fill"></i>

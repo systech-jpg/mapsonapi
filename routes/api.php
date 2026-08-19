@@ -41,12 +41,27 @@ Route::get('/android-icons/{filename}', [AndroidMenuController::class, 'serveIco
 Route::middleware('dolibarr.auth')->group(function () {
     Route::get('/menus', [AndroidMenuController::class, 'index']);
     Route::get('/fragment-menus', [AndroidMenuController::class, 'getFragmentMenus']);
+    /*
+    | Rute Stocktake (stock opname).
+    |
+    | Keempat rute literal di bawah adalah bentuk LAMA yang dipakai APK Android
+    | yang sudah beredar. Letaknya harus tetap di atas /stocktake/{id}, mengikuti
+    | aturan yang sama seperti di blok SPH.
+    |
+    | Dua rute lama yang dihapus: /stocktake/signature dan /stocktake/watermark.
+    | Keduanya memanggil layanan berbayar iLovePDF untuk menandatangani berkas
+    | yang alamatnya diambil dari kolom file_pdf milik llxjp_userstocktake_detail
+    | — tabel yang kosong dan tidak ada satu pun berkas ERP yang mengisinya.
+    */
     Route::get('/stocktake/products', [StocktakeController::class, 'getProducts']);
     Route::post('/stocktake/update', [StocktakeController::class, 'updateProducts']);
     Route::post('/stocktake/scan', [StocktakeController::class, 'scanProduct']);
     Route::get('/stocktake/history', [StocktakeController::class, 'getHistory']);
-    Route::post('/stocktake/signature', [StocktakeController::class, 'requestSignature']);
-    Route::post('/stocktake/watermark', [StocktakeController::class, 'requestWatermark']);
+
+    Route::get('/stocktake', [StocktakeController::class, 'index']);
+    Route::get('/stocktake/{id}', [StocktakeController::class, 'show'])->whereNumber('id');
+    Route::get('/stocktake/{id}/baris', [StocktakeController::class, 'lines'])->whereNumber('id');
+    Route::post('/stocktake/{id}/baris', [StocktakeController::class, 'saveLines'])->whereNumber('id');
 
     // Rute Lookup
     Route::get('/hospitals', [TindakanController::class, 'getHospitals']);
@@ -116,9 +131,27 @@ Route::middleware('dolibarr.auth')->group(function () {
     Route::post('/forecast/{id}/save', [ForecastController::class, 'save']);
 
     // Rute SPH (Surat Penawaran Harga)
+    //
+    // Dua rute berikut HARUS berada di atas /sph/{id}: tanpa itu 'form-options'
+    // dan 'customers' ditangkap lebih dulu sebagai id. whereNumber di bawah
+    // sebenarnya sudah menutup celah itu, tapi urutannya dipertahankan supaya
+    // penambahan rute literal berikutnya tidak perlu mengingat aturan ini.
+    Route::get('/sph/form-options', [SphController::class, 'formOptions']);
+    Route::get('/sph/customers', [SphController::class, 'customers']);
+    Route::get('/sph/products', [SphController::class, 'products']);
+
     Route::get('/sph', [SphController::class, 'index']);
-    Route::get('/sph/{id}', [SphController::class, 'show']);
-    Route::get('/sph/{id}/pdf', [SphController::class, 'downloadPdf']);
+    Route::post('/sph', [SphController::class, 'store']);
+    Route::get('/sph/{id}', [SphController::class, 'show'])->whereNumber('id');
+    Route::put('/sph/{id}', [SphController::class, 'update'])->whereNumber('id');
+    Route::get('/sph/{id}/pdf', [SphController::class, 'downloadPdf'])->whereNumber('id');
+
+    // Baris barang dan perpindahan status, padanan tombol di custom/sph/card.php
+    Route::post('/sph/{id}/lines', [SphController::class, 'storeLine'])->whereNumber('id');
+    Route::delete('/sph/{id}/lines/{lineId}', [SphController::class, 'destroyLine'])
+        ->whereNumber('id')->whereNumber('lineId');
+    Route::post('/sph/{id}/validate', [SphController::class, 'validateDocument'])->whereNumber('id');
+    Route::post('/sph/{id}/reopen', [SphController::class, 'reopen'])->whereNumber('id');
 
     // Rute Scan Produk (Android)
     Route::post('/products/scan', [ProductController::class, 'scan']);

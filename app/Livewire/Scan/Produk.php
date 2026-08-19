@@ -4,6 +4,7 @@ namespace App\Livewire\Scan;
 
 use App\Support\Api;
 use Illuminate\Http\Client\RequestException;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 /**
@@ -33,12 +34,21 @@ class Produk extends Component
     public string $barcodeManual = '';
 
     /**
-     * Barcode yang dikirim JavaScript tiap kali kamera mengenali kode.
+     * Barcode dari kamera. Dikirim JavaScript halaman sebagai event Livewire,
+     * bukan panggilan langsung ke method: skrip kameranya berjalan di luar
+     * komponen supaya pratinjau kamera tetap hidup walau livewire.js gagal
+     * dimuat (lihat komentar di resources/views/scan.blade.php).
      *
-     * Penjagaan barcode berulang ada di sisi browser (sama seperti lastBarcode
-     * di ProductScanViewModel): callback ZXing berbunyi berkali-kali per detik
+     * Penjagaan barcode berulang ada di sisi browser, sama seperti lastBarcode
+     * di ProductScanViewModel: callback ZXing berbunyi berkali-kali per detik
      * selama barcode masih terbidik.
      */
+    #[On('barcode-terbaca')]
+    public function terimaBarcode(string $kode): void
+    {
+        $this->scan($kode);
+    }
+
     public function scan(string $barcode): void
     {
         $barcode = trim($barcode);

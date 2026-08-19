@@ -107,6 +107,18 @@ Route::middleware('api.auth')->group(function () {
         return response()->json(['success' => true]);
     })->name('push.subscribe');
     Route::get('/stocktake', fn () => view('stocktake.index'))->name('stocktake');
+
+    /*
+    | Halaman kerja stocktake: satu dokumen, satu layar.
+    |
+    | Isiannya langsung di daftar barang, bukan lewat halaman detail per barang
+    | seperti di Android — satu dokumen berisi 300-an baris, dan alur "ketuk →
+    | halaman detail → simpan → kembali" berarti empat ketukan untuk setiap
+    | barang.
+    */
+    Route::get('/stocktake/{id}', fn (int $id) => view('stocktake.hitung', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('stocktake.hitung');
     Route::get('/tindakan', fn () => view('tindakan.index'))->name('tindakan');
     Route::get('/tindakan/buat', fn () => view('tindakan.form', ['id' => null]))->name('tindakan.buat');
 
@@ -186,7 +198,43 @@ Route::middleware('api.auth')->group(function () {
     Route::get('/forecast/{id}', fn (int $id) => view('forecast.produk', ['id' => $id]))
         ->whereNumber('id')
         ->name('forecast.produk');
+    /*
+    | SPH (Surat Penawaran Harga). Rute 'buat' harus di atas '{id}': tanpa itu
+    | /sph/buat ditangkap sebagai id dokumen. whereNumber sebenarnya sudah
+    | menutupnya, urutannya dipertahankan supaya tidak perlu diingat lagi.
+    */
     Route::get('/sph', fn () => view('sph.index'))->name('sph');
+    Route::get('/sph/buat', fn () => view('sph.form', ['id' => null]))->name('sph.buat');
+
+    Route::get('/sph/{id}', fn (int $id) => view('sph.detail', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('sph.detail');
+
+    Route::get('/sph/{id}/ubah', fn (int $id) => view('sph.form', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('sph.ubah');
+
+    /*
+    | PDF SPH diambil server ke server, alasan yang sama dengan surat jalan
+    | Tindakan: browser tidak pernah memegang api_key, jadi tautan langsung ke
+    | /api/sph/{id}/pdf pasti dijawab 401.
+    */
+    Route::get('/sph/{id}/pdf', function (int $id) {
+        $response = \App\Support\Api::client()->get("/sph/{$id}/pdf");
+
+        $tipe = (string) $response->header('Content-Type');
+
+        if ($response->failed() || ! str_contains(strtolower($tipe), 'pdf')) {
+            $pesan = $response->json('message') ?? 'PDF SPH belum bisa dibuat.';
+
+            return redirect()->route('sph.detail', $id)->with('galat', $pesan);
+        }
+
+        return response($response->body(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="sph-' . $id . '.pdf"',
+        ]);
+    })->whereNumber('id')->name('sph.pdf');
     Route::get('/scan', fn () => view('scan'))->name('scan');
     Route::get('/profil', fn () => view('profil'))->name('profil');
 });

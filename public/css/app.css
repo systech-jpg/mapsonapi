@@ -440,3 +440,182 @@ input, select, textarea { font-size: 16px; }
   border-radius: 12px;
   border: 1px solid #F1EDE6;
 }
+
+/* ---------- Stocktake ---------- */
+
+/* Halaman stocktake dibatasi lebarnya. Di layar lebar, kolom nama barang
+   memakan seluruh sisa ruang sehingga kotak isian terlempar jauh ke tepi kanan
+   dan mata harus menyeberangi layar kosong untuk setiap baris. */
+.st-halaman {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Kolom angka dibuat selebar mungkin tanpa mendorong nama barang keluar layar:
+   tiga kotak isian plus satu kolom total harus muat di layar ponsel 360px.
+   Kolom Container sengaja lebih lebar dari dua tetangganya supaya judulnya
+   tertulis utuh, bukan disingkat "Kont." yang bisa terbaca macam-macam. */
+.st-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3rem 3rem 3.7rem 2.7rem;
+  gap: .3rem;
+  align-items: center;
+  padding: .55rem .6rem;
+}
+
+.st-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--gold-050);
+  border-bottom: 1px solid #EADFC8;
+  font-size: .6rem; font-weight: 700;
+  letter-spacing: -.01em;
+  color: #6b5a3e;
+}
+
+.st-head span + span { text-align: center; }
+
+/* Mulai lebar tablet ruangnya cukup untuk kotak isian yang lebih besar --
+   angka diketik sambil memegang barang, jadi sasaran ketuk yang lebar
+   membantu. Nama barang tetap kebagian sisa lebarnya. */
+@media (min-width: 576px) {
+  .st-grid {
+    grid-template-columns: minmax(0, 1fr) 4rem 4rem 4.6rem 3.4rem;
+    gap: .5rem;
+    padding: .6rem .9rem;
+  }
+
+  .st-head { font-size: .72rem; letter-spacing: normal; }
+}
+
+.st-baris + .st-baris { border-top: 1px solid #F1EDE6; }
+.st-row { font-size: .82rem; }
+
+.st-kode { font-weight: 700; font-size: .84rem; line-height: 1.2; }
+
+.st-nama {
+  font-size: .72rem; line-height: 1.25; color: var(--muted);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Baris keterangan: principal, angka sistem, dan tombol catatan. Angka sistem
+   ditaruh di sini, bukan sebagai kolom tersendiri, supaya lima kolom di atas
+   tidak menyempit lagi. */
+.st-sub {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .66rem; color: var(--muted); margin-top: .15rem;
+}
+
+.st-sub .plus  { color: #2E7D32; }
+.st-sub .minus { color: #D32F2F; }
+
+.st-catatan-tombol {
+  margin-left: auto;
+  border: 0; background: none; padding: 0 .15rem;
+  color: var(--gold-500); font-size: .85rem; line-height: 1;
+}
+
+.st-catatan { padding: 0 .6rem .55rem; }
+
+.st-qty {
+  padding: .3rem .2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  border-radius: 8px;
+}
+
+.st-total {
+  text-align: center; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: .82rem;
+}
+
+/* Penyaring principal, digulir mendatar. */
+.st-chips {
+  display: flex; gap: .4rem;
+  overflow-x: auto;
+  padding-bottom: .25rem;
+  scrollbar-width: none;
+}
+
+.st-chips::-webkit-scrollbar { display: none; }
+
+.st-chip {
+  flex: 0 0 auto;
+  border: 1px solid #E3D9C6;
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: .3rem .7rem;
+  font-size: .74rem;
+  white-space: nowrap;
+}
+
+.st-chip.aktif {
+  background: var(--gold-050);
+  border-color: var(--gold-500);
+  color: var(--gold-500);
+  font-weight: 700;
+}
+
+.st-progres {
+  height: 6px;
+  border-radius: 999px;
+  background: #EFE7DA;
+  overflow: hidden;
+}
+
+.st-progres-isi {
+  height: 100%;
+  background: var(--gold-500);
+  border-radius: 999px;
+}
+
+/* Bilah Simpan menempel di dasar layar. Aturannya sama dengan .fc-aksi di
+   Forecast; ditulis terpisah supaya perubahan di salah satu modul tidak
+   diam-diam mengubah tampilan modul lainnya. */
+.st-aksi {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex; gap: .5rem;
+  background: var(--bg);
+  padding: .6rem 0 calc(.6rem + env(safe-area-inset-bottom));
+}
+
+.st-aksi .btn { padding-top: .6rem; padding-bottom: .6rem; }
+
+/* ---------- Penanda memuat bersama ---------- */
+
+/* Dipakai oleh #pemuat di layouts/app.blade.php untuk seluruh halaman.
+   pointer-events: none disengaja -- kalau JavaScript tersendat dan penanda ini
+   tertinggal menyala, aplikasi tetap bisa diketuk, bukan terkunci di balik
+   lapisan yang tidak mau hilang. */
+.pemuat {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 243, 246, .45);
+  pointer-events: none;
+}
+
+.pemuat.tampil { display: flex; }
+
+.pemuat-kotak {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .6rem 1.1rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: .9rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .14);
+}
+
+.pemuat-kotak .spinner-border { color: var(--gold-500); }

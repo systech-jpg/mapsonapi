@@ -85,7 +85,9 @@ dari session. Jadi web dan Android berbagi endpoint yang sama persis.
 | Sales Order | selesai (daftar saja) |
 | Forecast | selesai (buat dokumen + isi qty + submit) |
 | Tindakan | selesai (daftar, buat/ubah jadwal, validasi, isi pemakaian, pratinjau + validasi laporan, konfirmasi sampai, tarik barang, unduh surat jalan) |
-| Stocktake, SPH | masih placeholder |
+| SPH | daftar, buat dokumen (Draft), detail + unduh PDF. Baris barang masih lewat ERP |
+| Scan Produk | selesai (kamera ZXing, wajib HTTPS) |
+| Stocktake | daftar dokumen, isi hitungan fisik (rak/tray/container), saring principal, cari + scan barcode, catatan per baris. Dokumen tetap dibuat, divalidasi, dan di-approve di ERP |
 
 Modul Android di `C:\android\warehousmap\app\src\main\java\com\mapson\id\ui\`
 adalah **acuan alur**. Baca dulu sebelum membuat modul baru — komentar di
@@ -117,6 +119,28 @@ dalamnya sering menjelaskan bug yang sudah pernah terjadi.
    banyak. Pakai `.live.debounce.300ms` hanya untuk kotak pencarian.
 7. **Jangan pakai modal bawaan Bootstrap** bersama Livewire. Pakai pola
    `.sheet` + `.sheet-backdrop` yang sudah ada di `public/css/app.css`.
+
+8. **Penanda memuat cuma satu, dan tempatnya di layout — jangan bikin lagi
+   per halaman.** `#pemuat` di `resources/views/layouts/app.blade.php` menyala
+   untuk tiga hal sekaligus: muat halaman pertama/refresh, perpindahan
+   `wire:navigate`, dan setiap permintaan komponen Livewire (lewat
+   `Livewire.hook('commit')`). Blok `wire:loading` + `wire:loading.remove` yang
+   dulu ada di empat halaman daftar sudah dicopot supaya tidak ada dua tulisan
+   "Memuat…" sekaligus.
+
+   Tiga hal yang mudah dirusak tanpa sengaja:
+
+   - **`data-navigate-once` pada tag `<script>`-nya wajib.** Tanpa itu Livewire
+     menjalankan ulang skripnya setiap `wire:navigate` dan pendengarnya
+     menumpuk.
+   - **Waktu tampil MINIMUM 450 ms, bukan tenggang sebelum tampil.** Permintaan
+     di aplikasi ini selesai 150–300 ms; penanda yang mengikuti durasi
+     sebenarnya tidak sempat tertangkap mata, dan layar terlihat seperti tidak
+     bereaksi. Pernah dicoba `wire:loading.delay.longer` — hasilnya justru
+     penanda tidak pernah muncul sama sekali. Jangan ulangi.
+   - **Cukup `respond()`, jangan ditambah `fail()`.** Di `livewire.js`,
+     `handleFailure` memanggil `respond()` dulu baru `fail()`, jadi memasang
+     keduanya membuat satu permintaan dihitung selesai dua kali.
 
 ---
 
@@ -267,6 +291,64 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     keluar lebih awal bila API tidak terhubung, meninggalkan `$info` versi LAMA
     sehingga tahapnya seolah mundur. Penolakan server (termasuk 409) juga
     dimuat ulang, karena 409 justru pertanda layar yang ketinggalan.
+
+17. **Tabel stocktake di salinan lokal sudah dipangkas, dan endpoint lamanya
+    ikut mati karenanya.** `llxjp_stocktake_det` tidak lagi punya
+    `counter_qty_rak/tray/container/physical`, `fk_user_counter_update`, dan
+    `fk_user_verifikator_update` — kolom yang menopang pemisahan angka Counter
+    dan Verifikator. Sekarang cuma ada SATU set angka, sama seperti
+    `custom/stocktake/card.php`.
+
+    `qty_theoretical` **ditampilkan ke semua peran** yang boleh membuka modul
+    ini. Sempat disembunyikan dari grup Warehouse dengan alasan angka sistem
+    membuat orang menyalin alih-alih menghitung, tapi alasan itu tidak berlaku:
+    yang memakai modul ini verifikator, dan dia toh bisa membuka angka yang
+    sama di halaman stocktake ERP kapan saja. Jangan hidupkan lagi
+    penyembunyian itu tanpa alasan baru — dulu ia menyeret parameter
+    `$lihatTeori` ke tujuh method.
+
+    Ikutannya: `llxjp_userstocktake` dan `llxjp_userstocktake_detail` kosong
+    (0 baris) dan **tidak ada satu pun berkas di `custom/` yang menulisinya** —
+    `grep -rl "userstocktake" custom/` tidak menghasilkan apa-apa. Jadi gerbang
+    "jadwal aktif yang di-assign untuk user Anda" selalu berujung 404, dan
+    endpoint `signature` + `watermark` (iLovePDF, berbayar) menandatangani
+    berkas dari kolom `file_pdf` milik tabel kosong itu. Keduanya dihapus.
+    Principal turun pangkat jadi penyaring yang datanya dari isi dokumen.
+
+    **Penanda "sudah dihitung" tidak ada kolomnya lagi**, jadi diturunkan dari
+    `qty_physical > 0` — lihat `const TERISI` di controller. Jangan diganti
+    menjadi `(qty_rak + qty_tray + qty_container) > 0`; itu versi pertama dan
+    itu keliru. **Dokumen lama dihitung dengan mengisi qty fisik langsung
+    tanpa rincian rak/tray/container:**
+
+    | Dokumen | Total | Punya rincian | Punya qty fisik |
+    |---|---|---|---|
+    | STK/2601/0001 | 270 | 0 | 239 |
+    | STK/2601/0002 | 310 | 0 | 283 |
+    | STK/2606/0001 | 313 | 294 | 294 |
+    | STK/2608/0001 | 317 | 316 | 316 |
+
+    Dengan aturan rincian, halaman dokumen lama berbunyi "0 dari 270 terhitung"
+    tepat di sebelah "Fisik 36.346" — saling bertentangan di layar yang sama.
+    Aturan `qty_physical > 0` aman karena di dokumen berincian kedua aturan
+    memberi angka identik, dan tidak ada satu pun baris berincian yang qty
+    fisiknya nol (endpoint ini dan `card.php` sama-sama selalu menulis ulang
+    `qty_physical` sebagai jumlah ketiganya).
+
+    Akibat yang harus disadari: barang yang memang berjumlah nol tidak bisa
+    dibedakan dari barang yang belum disentuh. ERP menghadapi keterbatasan yang
+    sama, jadi angka progres di kedua sisi tetap sepakat. Kalau suatu saat
+    perbedaan itu penting, yang diperlukan kolom baru (mis. `date_count`) — dan
+    itu ALTER TABLE ke salinan production, wajib minta izin dulu.
+
+    Dua baris di STK/2608/0001 punya `principal = '0'` yang tidak cocok dengan
+    societe mana pun. Semua query baris memakai LEFT JOIN ke
+    `product_extrafields` dan `societe`, plus kelompok "Lainnya" (id 0); dengan
+    INNER JOIN kedua barang itu hilang diam-diam dan tak pernah bisa dihitung.
+
+    `qty_physical` selalu dihitung ulang di server sebagai rak + tray +
+    container dan tidak pernah diterima dari klien, meniru `calcQty()` di ERP.
+    Menulis hanya boleh saat status dokumen 0 (Draft); 1 dan 2 dijawab 409.
 
 ---
 

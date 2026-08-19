@@ -31,6 +31,17 @@
      sekaligus memakan ruang yang justru dibutuhkan daftarnya. --}}
 <body class="@hasSection('tanpa-menu') tanpa-menu @endif">
 
+  {{-- Penanda "sedang memuat" untuk seluruh aplikasi.
+       Sengaja tidak menangkap ketukan (pointer-events: none di app.css): kalau
+       JavaScript tersendat dan penanda ini tertinggal menyala, aplikasi tetap
+       bisa dipakai, bukan terkunci di balik lapisan yang tidak mau hilang. --}}
+  <div id="pemuat" class="pemuat" role="status" aria-live="polite" aria-hidden="true">
+    <div class="pemuat-kotak">
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+      <span>Memuat…</span>
+    </div>
+  </div>
+
   <main>
     @yield('content')
   </main>
@@ -60,6 +71,103 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
   @livewireScripts
+
+  {{--
+    Penanda memuat bersama.
+
+    data-navigate-once WAJIB: tanpa itu Livewire menjalankan ulang skrip ini
+    setiap kali pindah halaman lewat wire:navigate, dan pendengarnya menumpuk.
+
+    Kenapa ada waktu tampil MINIMUM, bukan tenggang sebelum tampil: permintaan
+    di aplikasi ini selesai 150-300 ms. Penanda yang tampil lalu langsung
+    hilang dalam tempo itu tidak sempat tertangkap mata -- yang terlihat cuma
+    layar yang seolah tidak bereaksi. Jadi begitu menyala, penanda ini bertahan
+    minimal 450 ms walau jawabannya sudah datang lebih dulu.
+  --}}
+  <script data-navigate-once>
+  (function () {
+    'use strict';
+
+    var TAMPIL_MINIMAL = 450;   // ms
+    var BATAS_AMAN = 15000;     // ms; penjaga supaya tidak pernah menyala abadi
+
+    var berjalan = 0;
+    var mulaiPada = 0;
+    var pewaktuAman = null;
+
+    // Elemennya dicari setiap kali, tidak disimpan: wire:navigate mengganti
+    // seluruh isi <body>, sehingga acuan yang disimpan menunjuk elemen mati.
+    function kotak() {
+      return document.getElementById('pemuat');
+    }
+
+    function gambar(tampak) {
+      var el = kotak();
+      if (!el) return;
+      el.classList.toggle('tampil', tampak);
+      el.setAttribute('aria-hidden', tampak ? 'false' : 'true');
+    }
+
+    function mulai() {
+      berjalan++;
+      if (berjalan > 1) return;
+
+      mulaiPada = Date.now();
+      gambar(true);
+
+      clearTimeout(pewaktuAman);
+      pewaktuAman = setTimeout(function () {
+        berjalan = 0;
+        gambar(false);
+      }, BATAS_AMAN);
+    }
+
+    function selesai() {
+      berjalan--;
+      if (berjalan > 0) return;
+      berjalan = 0;
+
+      clearTimeout(pewaktuAman);
+
+      var sisa = TAMPIL_MINIMAL - (Date.now() - mulaiPada);
+      setTimeout(function () {
+        if (berjalan === 0) gambar(false);
+      }, sisa > 0 ? sisa : 0);
+    }
+
+    // 1. Muat halaman pertama dan refresh.
+    mulai();
+    if (document.readyState === 'complete') {
+      selesai();
+    } else {
+      window.addEventListener('load', selesai, { once: true });
+    }
+
+    // 2. Pindah halaman lewat wire:navigate. Selama pengambilan halaman baru,
+    //    yang tergambar masih halaman lama -- tanpa penanda ini tidak ada
+    //    tanda apa pun bahwa ketukan tadi diterima.
+    document.addEventListener('livewire:navigate', mulai);
+    document.addEventListener('livewire:navigated', function () {
+      // Isi <body> sudah berganti, jadi hitungannya dinolkan, bukan dikurangi.
+      berjalan = 1;
+      selesai();
+    });
+
+    // 3. Setiap permintaan komponen Livewire: klik tombol, ketik di kotak cari,
+    //    simpan formulir.
+    //
+    //    Cukup respond(), jangan ditambah fail(): di livewire.js handleFailure
+    //    memanggil respond() lebih dulu baru fail(), jadi mendaftarkan keduanya
+    //    membuat satu permintaan dihitung selesai dua kali -- dan penandanya
+    //    padam walau permintaan lain masih berjalan.
+    document.addEventListener('livewire:init', function () {
+      window.Livewire.hook('commit', function (opsi) {
+        mulai();
+        opsi.respond(selesai);
+      });
+    });
+  })();
+  </script>
 
   <script>
     if ('serviceWorker' in navigator) {

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uji Kamera & Barcode</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; background: #f6f6f6; color: #111; }
+  h1 { font-size: 1.1rem; margin: 0 0 .75rem; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+  td { padding: .5rem .6rem; border-bottom: 1px solid #eee; font-size: .9rem; vertical-align: top; }
+  td:first-child { color: #666; width: 45%; }
+  .ok   { color: #2E7D32; font-weight: 700; }
+  .buruk{ color: #D32F2F; font-weight: 700; }
+  video { width: 100%; max-height: 55vh; background: #111; border-radius: 8px; margin-top: .75rem; }
+  #kode { margin-top: .5rem; padding: .6rem; background: #fff; border-radius: 8px; font-size: 1rem; word-break: break-all; }
+  #pilih { margin-top: .75rem; display: none; }
+  select, button { font-size: .95rem; padding: .45rem; border-radius: 6px; border: 1px solid #ccc; background: #fff; }
+</style>
+</head>
+<body>
+
+<h1>Uji Kamera &amp; Barcode</h1>
+<p style="font-size:.85rem;color:#666;margin:.25rem 0 .75rem">
+  Halaman ini tidak menyentuh data apa pun — hanya menguji apakah browser mau menyalakan kamera
+  dan membaca barcode. Hapus berkasnya bila sudah tidak dipakai.
+</p>
+
+<table id="lapor"></table>
+
+<div id="pilih">
+  <label for="daftarKamera" style="font-size:.85rem;color:#666">Kamera yang dipakai:</label><br>
+  <select id="daftarKamera"></select>
+  <button id="ganti" type="button">Pakai kamera ini</button>
+</div>
+
+<video id="video" playsinline muted autoplay></video>
+<div id="kode">Barcode terbaca: <strong>—</strong></div>
+
+<script>
+const lapor = document.getElementById('lapor');
+
+function baris(nama, nilai, baik) {
+  const kelas = baik === undefined ? '' : (baik ? 'ok' : 'buruk');
+  lapor.insertAdjacentHTML('beforeend',
+    '<tr><td>' + nama + '</td><td class="' + kelas + '">' + nilai + '</td></tr>');
+}
+
+const aman = window.isSecureContext;
+const adaMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+baris('Alamat halaman', location.protocol + '//' + location.host);
+baris('Konteks aman (HTTPS/localhost)', aman ? 'ya' : 'TIDAK', aman);
+baris('navigator.mediaDevices', adaMedia ? 'tersedia' : 'TIDAK ADA', adaMedia);
+
+if (!aman || !adaMedia) {
+  baris('Kesimpulan',
+    'Browser memblokir kamera karena halaman dibuka bukan lewat HTTPS. ' +
+    'Ini berlaku untuk semua situs, bukan cuma aplikasi ini.', false);
+} else {
+  const tag = document.createElement('script');
+  tag.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+
+  tag.onerror = function () {
+    baris('Pustaka ZXing', 'GAGAL dimuat dari internet', false);
+  };
+
+  tag.onload = async function () {
+    baris('Pustaka ZXing', 'termuat', true);
+
+    const video = document.getElementById('video');
+    const pembaca = new ZXing.BrowserMultiFormatReader();
+
+    async function nyalakan(deviceId) {
+      pembaca.reset();
+
+      const constraints = deviceId
+        ? { video: { deviceId: { exact: deviceId } } }
+        : { video: { facingMode: { ideal: 'environment' } } };
+
+      await pembaca.decodeFromConstraints(constraints, video, function (hasil) {
+        if (hasil) {
+          document.getElementById('kode').innerHTML =
+            'Barcode terbaca: <strong>' + hasil.getText() + '</strong>';
+        }
+      });
+    }
+
+    try {
+      await nyalakan(null);
+      baris('Kamera', 'menyala', true);
+
+      // Nama perangkat baru bisa dibaca SESUDAH izin diberikan; sebelum itu
+      // browser merahasiakannya. Di sinilah ketahuan yang terpilih kamera asli
+      // atau kamera virtual.
+      const track = video.srcObject && video.srcObject.getVideoTracks()[0];
+      if (track) {
+        const s = track.getSettings();
+        baris('Perangkat aktif', track.label || '(tanpa nama)');
+        baris('Ukuran gambar', (s.width || '?') + ' x ' + (s.height || '?') +
+          ' @ ' + (s.frameRate ? Math.round(s.frameRate) : '?') + ' fps');
+      }
+
+      // Gambar yang sampai ke <video> diukur sendiri: kamera bisa "menyala"
+      // tapi mengirim frame kosong (penutup lensa tertutup, mode privasi).
+      setTimeout(function () {
+        baris('Frame diterima <video>', video.videoWidth + ' x ' + video.videoHeight,
+          video.videoWidth > 0);
+      }, 1500);
+
+      const daftar = (await navigator.mediaDevices.enumerateDevices())
+        .filter(function (d) { return d.kind === 'videoinput'; });
+
+      baris('Kamera terdeteksi', daftar.length + ' perangkat', daftar.length > 0);
+
+      if (daftar.length > 0) {
+        const kotak = document.getElementById('daftarKamera');
+        daftar.forEach(function (d, i) {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ('Kamera ' + (i + 1));
+          kotak.appendChild(opt);
+        });
+
+        document.getElementById('pilih').style.display = 'block';
+        document.getElementById('ganti').onclick = function () {
+          nyalakan(kotak.value).catch(function (e) {
+            baris('Ganti kamera', 'GAGAL — ' + (e && e.name ? e.name : '?'), false);
+          });
+        };
+      }
+    } catch (e) {
+      baris('Kamera', 'GAGAL — ' + (e && e.name ? e.name : 'sebab tidak dikenal') +
+        (e && e.message ? ' (' + e.message + ')' : ''), false);
+    }
+  };
+
+  document.head.appendChild(tag);
+}
+</script>
+
+</body>
+</html>

@@ -1,11 +1,8 @@
-{{-- Tombol "Buat Jadwal" tidak di sini lagi: sekarang FAB melayang di halaman
-     pembungkus (resources/views/tindakan/index.blade.php), supaya tetap
-     terlihat sejauh apa pun daftarnya digulir. --}}
 <div>
   <div class="input-group mb-3">
     <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-secondary"></i></span>
     <input type="search" wire:model.live.debounce.300ms="cari" class="form-control border-start-0 ps-0"
-           placeholder="Cari ref, RS, dokter, atau pasien" aria-label="Cari tindakan">
+           placeholder="Cari nomor SPH, quotation, atau pelanggan" aria-label="Cari SPH">
   </div>
 
   @if ($galat)
@@ -20,42 +17,46 @@
        bersama di layouts/app.blade.php yang menyala untuk SEMUA permintaan di
        semua halaman, termasuk halaman yang tidak punya blok seperti ini. --}}
   <div>
-    @forelse ($this->hasil as $item)
-      @php $label = $this->label($item); @endphp
-
-      <a href="{{ route('tindakan.detail', $item['id']) }}" wire:navigate
+    @forelse ($items as $item)
+      <a href="{{ route('sph.detail', $item['rowid']) }}" wire:navigate
          class="d-block text-decoration-none text-dark bg-white rounded-4 p-3 shadow-sm mb-2"
-         wire:key="td-{{ $item['id'] }}">
+         wire:key="sph-{{ $item['rowid'] }}">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="min-width-0">
             <div class="fw-bold">{{ $item['ref'] ?? '-' }}</div>
-            <div class="text-secondary small text-truncate">{{ $item['rs_name'] ?? '-' }}</div>
+            <div class="text-secondary small text-truncate">{{ $item['customer_name'] ?: '-' }}</div>
           </div>
-          <span class="tk-status {{ \App\Support\StatusTindakan::warna($label) }} flex-shrink-0">{{ $label }}</span>
+
+          {{-- Warnanya lewat StatusTindakan supaya "Draft" di modul mana pun
+               berwarna sama: abu untuk Draft, hijau untuk Validated. --}}
+          <span class="tk-status {{ \App\Support\StatusTindakan::warna($item['status_label'] ?? '') }} flex-shrink-0">
+            {{ $item['status_label'] ?? '-' }}
+          </span>
         </div>
 
         <div class="tk-meta mt-2">
-          <span><i class="bi bi-person me-1"></i>{{ $item['pasien'] ?: '-' }}</span>
-          <span><i class="bi bi-clipboard-pulse me-1"></i>{{ $item['dokter_name'] ?: '-' }}</span>
+          <span><i class="bi bi-building me-1"></i>{{ $item['principal_name'] ?: '-' }}</span>
+          <span><i class="bi bi-person-badge me-1"></i>{{ $item['sales_name'] ?: '-' }}</span>
         </div>
 
         <div class="d-flex justify-content-between align-items-end mt-1">
           <span class="text-secondary small">
             <i class="bi bi-calendar3 me-1"></i>
-            {{ $item['tanggal'] ? \Illuminate\Support\Carbon::parse($item['tanggal'])->format('d M Y') : '—' }}
+            {{ $item['date_sph'] ? \Illuminate\Support\Carbon::parse($item['date_sph'])->format('d M Y') : '—' }}
           </span>
-          @if (! empty($item['ref_sj']))
-            <span class="text-secondary small">SJ: {{ $item['ref_sj'] }}</span>
+
+          @if (! empty($item['ref_quotation']))
+            <span class="text-secondary small">Quot: {{ $item['ref_quotation'] }}</span>
           @endif
         </div>
       </a>
     @empty
       @if (! $galat)
         <div class="bg-white rounded-4 p-4 shadow-sm text-center text-secondary">
-          @if (! empty($items))
-            Tidak ada tindakan yang cocok dengan pencarian.
+          @if ($cari !== '')
+            Tidak ada SPH yang cocok dengan pencarian.
           @else
-            Belum ada tindakan pada bulan ini.
+            Belum ada SPH. Tekan tombol Buat SPH untuk membuat yang pertama.
           @endif
         </div>
       @endif
@@ -69,14 +70,11 @@
     @endif
   </div>
 
-  @if ($periode)
+  @if ($total > 0)
     <p class="text-secondary small text-center mt-3 mb-0">
-      Periode {{ \Illuminate\Support\Carbon::parse($periode['start'])->format('d M') }}
-      – {{ \Illuminate\Support\Carbon::parse($periode['end'])->format('d M Y') }}
-      · {{ count($items) }} baris dimuat
+      {{ count($items) }} dari {{ $total }} dokumen
     </p>
   @endif
 
-  {{-- Baris terakhir harus bisa digulir melewati FAB, bukan tertutup olehnya. --}}
   <div class="fab-ruang"></div>
 </div>

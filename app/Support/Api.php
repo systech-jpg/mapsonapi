@@ -107,6 +107,12 @@ class Api
         return self::handle(self::client()->put($path, $data));
     }
 
+    /** Sama alasannya dengan put(): route DELETE menolak metode lain. */
+    public static function hapus(string $path, array $data = []): array
+    {
+        return self::handle(self::client()->delete($path, $data));
+    }
+
     /**
      * Buang session lalu lempar ke login bila API menolak token.
      */
