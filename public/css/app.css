@@ -138,6 +138,49 @@ input, select, textarea { font-size: 16px; }
 /* Ruang di dasar daftar supaya baris terakhir tidak tertutup FAB. */
 .fab-ruang { height: 5.5rem; }
 
+/* ---------- Scan produk ---------- */
+.scan-layar {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  background: #111;
+}
+
+/* object-fit: cover supaya gambar kamera tidak gepeng saat rasio layar dan
+   rasio sensor berbeda -- yang gepeng gagal dibaca ZXing. */
+.scan-video {
+  display: block;
+  width: 100%; height: 52vh;
+  object-fit: cover;
+}
+
+/* Bingkai bidik. box-shadow selebar layar meredupkan bagian luar bingkai,
+   jadi tidak perlu elemen tambahan hanya untuk menggelapkan sekitarnya. */
+.scan-bingkai {
+  position: absolute; inset: 16% 8%;
+  border: 3px solid rgba(255, 255, 255, .9);
+  border-radius: 1rem;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .28);
+  pointer-events: none;
+}
+
+.scan-galat {
+  position: absolute; inset: 0;
+  display: grid; place-content: center; text-align: center;
+  padding: 1.5rem;
+  background: rgba(17, 17, 17, .92);
+  color: #fff;
+}
+
+.scan-stok { font-size: 1.6rem; font-weight: 800; }
+
+/* Warnanya disamakan dengan stock_positive/stock_negative di Android. */
+.scan-stok.plus  { color: #2E7D32; }
+.scan-stok.minus { color: #D32F2F; }
+
+/* Deskripsi datang dari server sebagai beberapa baris yang dipisah "\n". */
+.scan-deskripsi { white-space: pre-line; }
+
 @media (prefers-reduced-motion: reduce) {
   .menu-card { transition: none; }
 }
