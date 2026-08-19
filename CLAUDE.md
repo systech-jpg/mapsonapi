@@ -88,6 +88,7 @@ dari session. Jadi web dan Android berbagi endpoint yang sama persis.
 | SPH | daftar, buat dokumen (Draft), detail + unduh PDF. Baris barang masih lewat ERP |
 | Scan Produk | selesai (kamera ZXing, wajib HTTPS) |
 | Stocktake | daftar dokumen, isi hitungan fisik (rak/tray/container), saring principal, cari + scan barcode, catatan per baris. Dokumen tetap dibuat, divalidasi, dan di-approve di ERP |
+| Chat | daftar percakapan + badge belum dibaca, chat personal & grup, kirim teks + lampiran, buat grup, realtime Pusher, notifikasi Web Push. Tambah anggota grup belum ada di UI (endpoint-nya ada) |
 
 Modul Android di `C:\android\warehousmap\app\src\main\java\com\mapson\id\ui\`
 adalah **acuan alur**. Baca dulu sebelum membuat modul baru — komentar di
@@ -381,6 +382,58 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     perintah ALTER-nya untuk server yang sudah berjalan. Bandingkan dengan
     `SHOW COLUMNS FROM <tabel>` sebelum menyalahkan kode aplikasi: gejalanya
     selalu berupa jalan di lokal, gagal di server.
+
+19. **Chat punya DUA jalur notifikasi, dan keduanya berangkat dari satu titik.**
+    `ChatController::sendPushNotification()` mengirim ke Pusher Beams (FCM,
+    untuk Android) DAN Web Push VAPID (untuk PWA, lewat
+    `App\Notifications\PesanChatBaru`). Dulu method itu berhenti lebih awal bila
+    Beams belum dikonfigurasi — penjagaan itu sudah dipindah ke dalam supaya
+    browser tidak ikut kehilangan notifikasi.
+
+    Langganan Web Push tersimpan di tabel `push_subscriptions` dan ditautkan ke
+    `App\Models\DolibarrUser` (rowid `llxjp_user`), jadi penerimanya sama persis
+    dengan penerima di Beams. Petugas yang belum pernah menekan **Aktifkan
+    notifikasi** di halaman Profil tidak punya baris di sana, dan pesan untuknya
+    lewat begitu saja tanpa galat — itu bukan kerusakan.
+
+20. **Kanal realtime chat sama untuk Android dan PWA: `chat.user.{rowid}`,
+    event `new-message`.** Di PWA dipasang lewat
+    `resources/views/partials/pusher-chat.blade.php` yang di-`@include` di
+    layout, bukan per halaman — badge belum dibaca di beranda ikut hidup
+    karenanya.
+
+    Tiga hal yang mudah merusaknya:
+
+    - **`wsHost` JANGAN diisi dari `config('broadcasting...options.host')`.**
+      Nilai itu tidak pernah kosong: tanpa `PUSHER_HOST` ia jatuh ke
+      `api-<cluster>.pusher.com`, yaitu alamat REST API — BUKAN alamat
+      WebSocket (`ws-<cluster>.pusher.com`). Meneruskannya ke pusher-js membuat
+      koneksi tidak pernah tersambung. Partial-nya membuang host yang
+      berakhiran `.pusher.com` dan membiarkan SDK menyusunnya dari cluster.
+    - **Penjaga `window.__chatPusherTerpasang` wajib.** `wire:navigate`
+      menjalankan ulang skrip di `<body>`, dan tanpa penjaga itu satu pesan
+      masuk dihitung sebanyak jumlah halaman yang pernah dibuka.
+    - **Method pendengar `#[On('chat-masuk')]` HARUS punya parameter
+      `?int $senderId`, `?int $groupId`** walau tidak dipakai. Livewire
+      meneruskan muatan event sebagai named argument; method tanpa parameter
+      dijawab `Unknown named parameter $senderId`.
+
+    Sengaja **tidak ada `wire:poll` sebagai cadangan**: penanda "Memuat…"
+    bersama di layout menyala untuk setiap permintaan Livewire, jadi polling
+    membuat layar berkedip terus-menerus (lihat bagian 3 nomor 9). Bila Pusher
+    tidak terjangkau, pesan baru tetap muncul saat halaman dimuat ulang.
+
+21. **Lampiran chat tidak bisa ditautkan langsung dari browser.** Berkasnya
+    tersimpan TERENKRIPSI di `storage/app/private/chat_secure/` dan hanya bisa
+    dibuka lewat `GET /api/chat/download/{filename}` yang menuntut header
+    Authorization — sedangkan browser tidak pernah memegang api_key. Route web
+    `pesan.berkas` yang mengambilkannya server ke server, pola yang sama dengan
+    surat jalan Tindakan.
+
+    Nama simpanannya (`1785895336_6a72....enc`) tidak menyimpan nama asli, jadi
+    nama aslinya dititipkan lewat query `?nama=` dan dibersihkan di route.
+    Berkas yang diunggah dari server produksi TIDAK ada di disk mesin lokal —
+    404 di sini normal, bukan tanda endpoint-nya rusak.
 
 ---
 

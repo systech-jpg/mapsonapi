@@ -619,3 +619,209 @@ input, select, textarea { font-size: 16px; }
 }
 
 .pemuat-kotak .spinner-border { color: var(--gold-500); }
+
+/* ---------- Chat ---------- */
+
+/* Satu baris di daftar percakapan / daftar kontak. */
+.ch-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.ch-avatar {
+  flex: 0 0 auto;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--gold-050);
+  color: var(--gold-500);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 1.1rem;
+}
+
+.ch-avatar.grup { background: #E8EEF7; color: #2E68B2; }
+.ch-avatar.kecil { width: 34px; height: 34px; font-size: .9rem; }
+
+.ch-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px;
+  padding: 0 .35rem;
+  border-radius: 999px;
+  background: var(--gold-500);
+  color: #fff;
+  font-size: .68rem; font-weight: 700; line-height: 1;
+}
+
+/* Menempel di pojok tombol Pesan pada header beranda. */
+.ch-badge-pojok {
+  position: absolute;
+  top: -4px; right: -4px;
+  border: 2px solid var(--gold-500);
+  background: #E74C3C;
+}
+
+/* Baris pilihan anggota grup. Dibuat setinggi jempol, bukan setinggi teks. */
+.ch-pilih {
+  display: flex; align-items: center; gap: .7rem;
+  padding: .6rem .8rem;
+  cursor: pointer;
+}
+
+.ch-pilih + .ch-pilih { border-top: 1px solid #F1EDE6; }
+.ch-pilih:active { background: var(--gold-050); }
+
+/* FAB dengan dua pilihan, memakai <details> supaya tidak butuh JavaScript. */
+.ch-fab { position: fixed; right: 1rem; bottom: calc(1.1rem + env(safe-area-inset-bottom)); z-index: 5; }
+
+.ch-fab > summary {
+  list-style: none;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: var(--gold-500);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+  cursor: pointer;
+}
+
+.ch-fab > summary::-webkit-details-marker { display: none; }
+.ch-fab[open] > summary { transform: rotate(45deg); }
+
+.ch-fab-menu {
+  position: absolute;
+  right: 0; bottom: 68px;
+  display: flex; flex-direction: column; gap: .5rem;
+  align-items: flex-end;
+}
+
+.ch-fab-menu a {
+  white-space: nowrap;
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600; font-size: .88rem;
+  padding: .6rem 1rem;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .14);
+}
+
+.ch-fab-menu a i { color: var(--gold-500); margin-right: .3rem; }
+
+/* Ruang percakapan. Ruang bawahnya menyisakan tempat untuk kotak tulis pesan
+   yang menempel di dasar layar. */
+.ch-percakapan { padding-bottom: .5rem; }
+
+.ch-pemisah {
+  display: flex; justify-content: center;
+  margin: .8rem 0 .6rem;
+}
+
+.ch-pemisah span {
+  background: #EFE7DA;
+  color: var(--muted);
+  font-size: .7rem; font-weight: 600;
+  padding: .2rem .7rem;
+  border-radius: 999px;
+}
+
+.ch-baris { display: flex; margin-bottom: .4rem; }
+.ch-baris.saya { justify-content: flex-end; }
+
+.ch-gelembung {
+  max-width: 82%;
+  background: var(--surface);
+  border-radius: 16px 16px 16px 4px;
+  padding: .5rem .7rem .3rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+}
+
+.ch-gelembung.saya {
+  background: var(--gold-050);
+  border-radius: 16px 16px 4px 16px;
+}
+
+.ch-nama { font-size: .74rem; font-weight: 700; color: var(--gold-500); margin-bottom: .15rem; }
+
+/* white-space: pre-line supaya baris baru yang diketik pengirim tetap terlihat;
+   word-break menjaga tautan panjang tanpa spasi tidak melebarkan gelembung
+   sampai keluar layar. */
+.ch-teks { white-space: pre-line; word-break: break-word; font-size: .92rem; }
+
+.ch-jam { font-size: .65rem; color: var(--muted); text-align: right; margin-top: .1rem; }
+
+.ch-gambar {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 10px;
+  margin-bottom: .3rem;
+}
+
+.ch-berkas {
+  display: flex; align-items: center; gap: .4rem;
+  background: rgba(0, 0, 0, .04);
+  border-radius: 10px;
+  padding: .45rem .6rem;
+  margin-bottom: .3rem;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: .82rem;
+  max-width: 100%;
+}
+
+.ch-berkas i { color: var(--gold-500); flex-shrink: 0; }
+
+/* Kotak tulis pesan. Aturannya sama dengan .st-aksi di Stocktake; ditulis
+   terpisah supaya perubahan di salah satu modul tidak diam-diam mengubah
+   modul lainnya. */
+.ch-komposer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--bg);
+  padding: .5rem 0 calc(.5rem + env(safe-area-inset-bottom));
+}
+
+.ch-komposer-baris { display: flex; align-items: center; gap: .4rem; }
+
+.ch-isian {
+  border-radius: 999px;
+  padding: .55rem .9rem;
+}
+
+.ch-tombol {
+  flex: 0 0 auto;
+  width: 42px; height: 42px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--gold-500);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.05rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+  cursor: pointer;
+}
+
+.ch-tombol.kirim { background: var(--gold-500); color: #fff; }
+.ch-tombol.kirim:disabled { opacity: .6; }
+
+/* Antrean lampiran yang belum terkirim. */
+.ch-antre { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .4rem; }
+
+.ch-antre-item {
+  display: inline-flex; align-items: center; gap: .3rem;
+  max-width: 100%;
+  background: var(--surface);
+  border: 1px solid #E3D9C6;
+  border-radius: 999px;
+  padding: .25rem .5rem;
+  font-size: .76rem;
+}
+
+.ch-antre-item i { color: var(--gold-500); }
+
+.ch-antre-item .btn-buang {
+  border: 0; background: none; padding: 0 .1rem;
+  color: var(--muted); font-size: .7rem; line-height: 1;
+}

@@ -10,9 +10,10 @@
         {{-- Response /api/login memakai field 'login', bukan 'username'. --}}
         <p>{{ session('api_user.login') }}</p>
       </div>
-      <a href="{{ route('pesan') }}" wire:navigate class="header-btn" aria-label="Pesan">
-        <i class="bi bi-chat-fill"></i>
-      </a>
+      {{-- Tombolnya sekarang komponen Livewire supaya bisa membawa angka pesan
+           belum dibaca, dan menghitungnya ulang saat Pusher mengabarkan pesan
+           masuk — padanan ChatBadge di dashboard Android. --}}
+      @livewire('chat.lonceng')
     </div>
   </header>
 

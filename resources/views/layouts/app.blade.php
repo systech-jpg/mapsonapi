@@ -186,6 +186,11 @@
     });
   </script>
 
+  {{-- Pendengar chat realtime. Diletakkan sebelum @stack karena isinya
+       memakai @push, dan @push yang datang sesudah stack-nya digambar tidak
+       akan pernah muncul. --}}
+  @include('partials.pusher-chat')
+
   @stack('scripts')
 </body>
 </html>

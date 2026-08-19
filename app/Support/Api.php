@@ -91,6 +91,27 @@ class Api
     }
 
     /**
+     * POST multipart dengan BANYAK berkas pada satu nama field (lampiran chat).
+     *
+     * Nama field-nya sengaja diberi kurung siku — "attachments[]" — karena
+     * validator di ChatController menuntut `attachments` berupa array
+     * (`attachments.*`). Tanpa kurung siku, berkas kedua menimpa yang pertama
+     * dan yang sampai ke server cuma satu, bukan array.
+     *
+     * @param  list<array{isi: string, nama: string}>  $berkas
+     */
+    public static function unggahBanyak(string $path, string $field, array $berkas, array $data = []): array
+    {
+        $request = self::client();
+
+        foreach ($berkas as $b) {
+            $request = $request->attach($field . '[]', $b['isi'], $b['nama']);
+        }
+
+        return self::handle($request->post($path, $data));
+    }
+
+    /**
      * Meneruskan gambar dari endpoint API ke browser.
      *
      * Berkasnya ada di folder dokumen Dolibarr di balik endpoint ber-Authorization,

@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Crypt;
 use App\Events\MessageSent;
 use App\Services\BeamsNotifier;
+use App\Models\DolibarrUser;
+use App\Notifications\PesanChatBaru;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class ChatController extends Controller
@@ -454,11 +457,6 @@ class ChatController extends Controller
      */
     private function sendPushNotification($sender, $message): void
     {
-        $beams = app(BeamsNotifier::class);
-        if (!$beams->isConfigured()) {
-            return;
-        }
-
         $senderName = trim(($sender->firstname ?? '') . ' ' . ($sender->lastname ?? ''));
         if ($senderName === '') {
             $senderName = $sender->login ?? 'Seseorang';
@@ -497,7 +495,54 @@ class ChatController extends Controller
             ];
         }
 
-        $beams->notifyUsers($recipients, $title, $body, $data);
+        // Android: Pusher Beams (FCM).
+        $beams = app(BeamsNotifier::class);
+        if ($beams->isConfigured()) {
+            $beams->notifyUsers($recipients, $title, $body, $data);
+        }
+
+        // PWA: Web Push VAPID. Dipanggil terpisah, BUKAN di dalam penjagaan
+        // Beams di atas — sebelumnya seluruh method berhenti lebih awal saat
+        // Beams belum dikonfigurasi, sehingga browser ikut tidak kebagian.
+        $this->kirimWebPush($recipients, $title, $body, $data);
+    }
+
+    /**
+     * Notifikasi ke browser (PWA) untuk penerima yang perangkatnya sudah
+     * berlangganan lewat route /push/subscribe.
+     *
+     * Gagal-diam dengan alasan yang sama seperti BeamsNotifier: pesannya sudah
+     * tersimpan di database, dan notifikasi yang gagal tidak boleh membuat
+     * POST /chat/messages dijawab 500.
+     *
+     * @param  array<int|string>  $recipients
+     * @param  array<string,string>  $data
+     */
+    private function kirimWebPush(array $recipients, string $title, string $body, array $data): void
+    {
+        // Alamat halaman percakapan di PWA, dilihat dari sisi PENERIMA: untuk
+        // chat personal yang dibuka adalah ruang milik si PENGIRIM.
+        if (($data['chat_type'] ?? '') === 'group') {
+            $tautan = '/pesan/g/' . $data['group_id'];
+            $tanda = 'chat-grup-' . $data['group_id'];
+        } else {
+            $tautan = '/pesan/u/' . $data['other_user_id'];
+            $tanda = 'chat-personal-' . $data['other_user_id'];
+        }
+
+        $ids = array_values(array_filter(array_map('intval', $recipients)));
+
+        if (empty($ids)) {
+            return;
+        }
+
+        try {
+            foreach (DolibarrUser::whereIn('rowid', $ids)->get() as $user) {
+                $user->notify(new PesanChatBaru($title, $body, $tautan, $tanda));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Web push chat gagal: ' . $e->getMessage());
+        }
     }
 
     /**

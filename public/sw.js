@@ -69,9 +69,20 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      // Sudah berada di halaman yang dituju: cukup dimunculkan ke depan.
       for (const win of wins) {
         if (win.url.includes(target) && 'focus' in win) return win.focus();
       }
+
+      // Ada jendela aplikasi tapi di halaman lain — arahkan jendela ITU, jangan
+      // buka jendela baru. Notifikasi chat hampir selalu datang saat aplikasi
+      // sudah terbuka di beranda; tanpa ini, satu notifikasi = satu tab baru.
+      for (const win of wins) {
+        if ('navigate' in win) {
+          return win.navigate(target).then((w) => (w && 'focus' in w ? w.focus() : w));
+        }
+      }
+
       return clients.openWindow(target);
     })
   );

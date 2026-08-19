@@ -70,7 +70,63 @@ Route::middleware('api.auth')->group(function () {
         ]);
     })->name('home');
 
+    /*
+    | Chat.
+    |
+    | Alurnya mengikuti aplikasi Android satu lawan satu: daftar percakapan
+    | (inbox) -> pilih kontak / buat grup -> ruang percakapan. Endpoint yang
+    | dipakai sama persis dengan yang dipakai Android, tanpa satu pun tambahan
+    | di routes/api.php.
+    |
+    | 'kontak' dan 'grup-baru' ditulis SEBELUM ruang percakapan supaya niatnya
+    | terbaca berurutan. Bentrokan alamat sendiri sudah tertutup karena ruang
+    | percakapan memakai awalan /pesan/u/ dan /pesan/g/, bukan /pesan/{id}.
+    */
     Route::get('/pesan', fn () => view('pesan'))->name('pesan');
+    Route::get('/pesan/kontak', fn () => view('pesan.kontak'))->name('pesan.kontak');
+    Route::get('/pesan/grup-baru', fn () => view('pesan.grup-baru'))->name('pesan.grup-baru');
+
+    Route::get('/pesan/u/{id}', fn (int $id) => view('pesan.ruang', ['tipe' => 'personal', 'id' => $id]))
+        ->whereNumber('id')
+        ->name('pesan.personal');
+
+    Route::get('/pesan/g/{id}', fn (int $id) => view('pesan.ruang', ['tipe' => 'group', 'id' => $id]))
+        ->whereNumber('id')
+        ->name('pesan.grup');
+
+    /*
+    | Lampiran chat.
+    |
+    | Berkasnya tersimpan terenkripsi di storage dan hanya bisa dibuka lewat
+    | GET /api/chat/download/{filename} yang menuntut header Authorization —
+    | sedangkan browser tidak pernah memegang api_key. Jadi diambil server ke
+    | server lalu diteruskan, pola yang sama dengan surat jalan Tindakan.
+    |
+    | Nama berkas dibatasi pola yang aman: tanpa itu, ".." di alamat akan ikut
+    | tersusun menjadi path di sisi API.
+    */
+    Route::get('/pesan/berkas/{berkas}', function (Request $request, string $berkas) {
+        $response = \App\Support\Api::client()->get('/chat/download/' . $berkas);
+
+        if ($response->failed()) {
+            abort(404, 'Lampiran tidak ditemukan atau gagal dibuka.');
+        }
+
+        // Nama asli berkas hanya ada di isi pesan, tidak di nama simpanannya
+        // (yang berbentuk 173xxxxx_65a....enc). Jadi ia dititipkan lewat query
+        // string, dan dibersihkan di sini karena datang dari alamat.
+        $nama = basename((string) $request->query('nama', $berkas));
+        $nama = str_replace(['"', "\r", "\n"], '', $nama) ?: $berkas;
+
+        return response($response->body(), 200, [
+            'Content-Type' => $response->header('Content-Type') ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . $nama . '"',
+            // Isi lampiran tidak pernah berubah untuk satu nama berkas, tapi
+            // sifatnya pribadi — jadi boleh disimpan browser, tidak boleh oleh
+            // perantara mana pun.
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    })->where('berkas', '[A-Za-z0-9._-]+')->name('pesan.berkas');
 
     /*
     | Penyimpanan push subscription.
