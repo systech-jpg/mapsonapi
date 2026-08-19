@@ -90,8 +90,6 @@
         </button>
       </form>
     </div>
-
-    <p class="login-catatan">Mapson Field Service</p>
   </div>
 
   <script>

@@ -867,17 +867,17 @@ input, select, textarea { font-size: 16px; }
   background: linear-gradient(160deg, var(--gold-400) 0%, var(--gold-500) 100%);
 }
 
-/* margin-top: auto memusatkan kartu bersama .login-catatan yang memakai
-   margin-bottom: auto — SENGAJA bukan justify-content: center pada induknya.
-   Dengan justify-content, isi yang lebih tinggi daripada layar (kasus keyboard
-   terbuka di layar pendek) meluber ke atas DAN ke bawah, dan bagian atasnya
-   tidak bisa digulir untuk dimunculkan — logo beserta kotak Username hilang
-   permanen. Margin auto runtuh menjadi 0 begitu ruangnya habis, jadi isinya
-   tetap utuh dan bisa digulir. */
+/* Kartu dipusatkan dengan margin auto atas-bawah, SENGAJA bukan
+   justify-content: center pada induknya. Dengan justify-content, isi yang lebih
+   tinggi daripada layar (kasus keyboard terbuka di layar pendek) meluber ke
+   atas DAN ke bawah, dan bagian atasnya tidak bisa digulir untuk dimunculkan —
+   logo beserta kotak Username hilang permanen. Margin auto runtuh menjadi 0
+   begitu ruangnya habis, jadi isinya tetap utuh dan bisa digulir. */
 .login-kartu {
   width: 100%;
   max-width: 26rem;
   margin-top: auto;
+  margin-bottom: auto;
   background: var(--surface);
   border-radius: 26px;
   padding: 2rem 1.5rem;
@@ -979,13 +979,3 @@ input, select, textarea { font-size: 16px; }
 
 .login-tombol:disabled { opacity: .75; }
 
-/* margin-bottom: auto adalah pasangan .login-kartu { margin-top: auto } —
-   keduanya yang memusatkan isi layar. Jangan diganti "margin: 0". */
-.login-catatan {
-  color: rgba(255, 255, 255, .85);
-  font-size: .78rem;
-  text-align: center;
-  margin-top: 0;
-  margin-bottom: auto;
-  padding-top: 1.25rem;
-}
