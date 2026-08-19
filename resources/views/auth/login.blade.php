@@ -1,12 +1,18 @@
 {{--
   Halaman login berdiri sendiri, tidak memakai layouts.app, karena tab bar dan
   FAB Scan tidak boleh tampil sebelum pengguna masuk.
+
+  Susunannya mengikuti activity_login.xml di Android: logo besar di atas, dua
+  kotak isian bergaya outlined, lalu satu tombol pil emas selebar layar.
 --}}
 <!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {{-- interactive-widget=resizes-content: saat keyboard muncul, viewport ikut
+       menyusut sehingga tombol Masuk naik ke atas keyboard. Padanan
+       NestedScrollView + fillViewport di layout Android. --}}
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
   <link rel="manifest" href="/manifest.webmanifest">
@@ -25,66 +31,106 @@
 </head>
 <body style="padding-bottom: 0;">
 
-  <header class="app-header">
-    <h1>Masuk</h1>
-    <p>Mapson</p>
-  </header>
+  <div class="login-layar">
+    <div class="login-kartu">
+      {{-- Berkas yang sama persis dengan drawable/logo.png di Android, disalin
+           ke public/pwa/ supaya kedua aplikasi memakai logo yang sama dan tidak
+           bisa berbeda diam-diam saat salah satunya diperbarui. --}}
+      <img src="{{ asset('pwa/logo.png') }}?v={{ filemtime(public_path('pwa/logo.png')) }}"
+           alt="Mapson Arya Parahita" class="login-logo">
 
-  <div class="px-3" style="margin-top: -3rem;">
-    <div class="bg-white rounded-4 p-4 shadow-sm">
+      <p class="login-sambutan">Masuk untuk melanjutkan</p>
 
       @if (session('pesan'))
-        <div class="alert alert-warning d-flex align-items-center gap-2">
+        <div class="alert alert-warning d-flex align-items-center gap-2 rounded-4">
           <i class="bi bi-exclamation-triangle-fill"></i>
-          <span>{{ session('pesan') }}</span>
+          <span class="small">{{ session('pesan') }}</span>
         </div>
       @endif
 
       @error('username')
-        <div class="alert alert-danger d-flex align-items-center gap-2">
+        <div class="alert alert-danger d-flex align-items-center gap-2 rounded-4">
           <i class="bi bi-x-circle-fill"></i>
-          <span>{{ $message }}</span>
+          <span class="small">{{ $message }}</span>
         </div>
       @enderror
 
-      <form method="POST" action="{{ route('login') }}">
+      <form method="POST" action="{{ route('login') }}" id="form-masuk">
         @csrf
 
-        <div class="mb-3">
-          <label for="username" class="form-label fw-semibold">Username</label>
-          <div class="input-group">
-            <span class="input-group-text bg-body-tertiary"><i class="bi bi-person"></i></span>
-            <input type="text" id="username" name="username" value="{{ old('username') }}"
-                   class="form-control @error('username') is-invalid @enderror"
-                   autocomplete="username" autocapitalize="none" autofocus required>
-          </div>
+        {{-- placeholder=" " (satu spasi) WAJIB: label mengambang di app.css
+             memakai :placeholder-shown untuk tahu kotaknya masih kosong. Tanpa
+             placeholder, label tidak pernah turun kembali. --}}
+        <div class="login-isian">
+          <input type="text" id="username" name="username" value="{{ old('username') }}"
+                 class="form-control @error('username') is-invalid @enderror"
+                 placeholder=" " autocomplete="username" autocapitalize="none" autofocus required>
+          <label for="username">Username</label>
         </div>
 
-        <div class="mb-4">
-          <label for="password" class="form-label fw-semibold">Kata sandi</label>
-          <div class="input-group">
-            <span class="input-group-text bg-body-tertiary"><i class="bi bi-lock"></i></span>
-            <input type="password" id="password" name="password"
-                   class="form-control @error('password') is-invalid @enderror"
-                   autocomplete="current-password" required>
-          </div>
-          @error('password')
-            <div class="text-danger small mt-1">{{ $message }}</div>
-          @enderror
+        <div class="login-isian punya-mata">
+          <input type="password" id="password" name="password"
+                 class="form-control @error('password') is-invalid @enderror"
+                 placeholder=" " autocomplete="current-password" required>
+          <label for="password">Kata sandi</label>
+
+          <button type="button" class="login-mata" id="tombol-mata"
+                  aria-label="Tampilkan kata sandi" aria-pressed="false">
+            <i class="bi bi-eye" id="ikon-mata"></i>
+          </button>
         </div>
 
-        <button type="submit" class="btn w-100 fw-bold text-white py-2"
-                style="background: var(--gold-500); border-radius: 999px;">
-          Masuk
+        @error('password')
+          <div class="text-danger small mb-2">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="login-tombol mt-3" id="tombol-masuk">
+          <span class="spinner-border spinner-border-sm d-none" id="putar-masuk" aria-hidden="true"></span>
+          <span id="label-masuk">Masuk</span>
         </button>
       </form>
-
     </div>
+
+    <p class="login-catatan">Mapson Field Service</p>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-
   <script>
+    // Lihat/sembunyikan kata sandi, padanan endIconMode="password_toggle" di
+    // TextInputLayout Android.
+    (() => {
+      const isian = document.getElementById('password');
+      const tombol = document.getElementById('tombol-mata');
+      const ikon = document.getElementById('ikon-mata');
+
+      tombol.addEventListener('click', () => {
+        const tampak = isian.type === 'text';
+
+        isian.type = tampak ? 'password' : 'text';
+        ikon.className = tampak ? 'bi bi-eye' : 'bi bi-eye-slash';
+        tombol.setAttribute('aria-pressed', tampak ? 'false' : 'true');
+        tombol.setAttribute('aria-label', tampak ? 'Tampilkan kata sandi' : 'Sembunyikan kata sandi');
+
+        // Fokus dikembalikan supaya keyboard tidak menutup di tengah pengetikan.
+        isian.focus();
+      });
+    })();
+
+    // Penanda "sedang diproses". Login memanggil API Dolibarr dan bisa memakan
+    // satu-dua detik; tanpa penanda, orang menekan tombolnya berkali-kali.
+    (() => {
+      const form = document.getElementById('form-masuk');
+      const tombol = document.getElementById('tombol-masuk');
+
+      form.addEventListener('submit', () => {
+        document.getElementById('putar-masuk').classList.remove('d-none');
+        document.getElementById('label-masuk').textContent = 'Memeriksa…';
+
+        // setTimeout, bukan langsung: tombol submit yang di-disable di dalam
+        // handler-nya sendiri membatalkan pengiriman form di sebagian browser.
+        setTimeout(() => { tombol.disabled = true; }, 0);
+      });
+    })();
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
     }

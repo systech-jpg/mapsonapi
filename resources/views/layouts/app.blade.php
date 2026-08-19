@@ -2,7 +2,12 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {{-- interactive-widget=resizes-content: saat keyboard muncul, viewport ikut
+       menyusut sehingga 100dvh dan elemen di dasar layar naik ke ATAS keyboard,
+       bukan tertutup di belakangnya. Tanpa ini, kotak tulis pesan di ruang chat
+       hilang persis saat sedang dipakai mengetik. Diabaikan browser yang belum
+       mengenalnya (mis. Safari iOS), jadi aman untuk semua halaman. --}}
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
   {{-- PWA --}}

@@ -435,6 +435,37 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     Berkas yang diunggah dari server produksi TIDAK ada di disk mesin lokal —
     404 di sini normal, bukan tanda endpoint-nya rusak.
 
+22. **Kotak tulis pesan TIDAK boleh memakai `position: sticky`.** Sticky baru
+    menempel ke dasar layar setelah isinya lebih tinggi daripada layar; pada
+    percakapan yang baru berisi satu-dua pesan, kotaknya berhenti mengambang di
+    tengah. Sudah pernah menggigit sekali.
+
+    Yang dipakai sekarang `.ch-layar`: satu layar penuh (`height: 100dvh`)
+    berisi tiga bagian flex — header tetap, `.ch-isi` yang mengambil sisa ruang
+    dan menggulir sendiri, lalu kotak tulis. Halamannya sendiri tidak pernah
+    bergulir, jadi **`window.scrollTo()` tidak menggerakkan apa pun**; yang
+    digulir ke bawah setelah pesan terkirim adalah `.ch-isi`.
+
+    Ikutannya, `<meta name="viewport">` di layout diberi
+    `interactive-widget=resizes-content` supaya viewport menyusut saat keyboard
+    muncul dan kotak tulis naik ke ATAS keyboard. Tanpa itu kotaknya tertutup
+    keyboard persis saat sedang dipakai mengetik. Diabaikan browser yang belum
+    mengenalnya, jadi tidak merusak halaman lain.
+
+    `.ch-layar > .app-header` juga memangkas `padding-bottom` bawaan
+    `.app-header.ringkas` (3.25rem). Angka itu ada supaya kartu di halaman lain
+    bisa menaiki header dengan `margin-top` negatif — di ruang chat tidak ada
+    yang menaikinya, jadi yang tersisa cuma pita emas kosong.
+
+23. **Label mengambang di halaman masuk butuh `placeholder=" "`.** Aturannya di
+    `app.css` memakai `:placeholder-shown` untuk tahu kotaknya masih kosong;
+    tanpa placeholder berisi satu spasi, label tidak pernah turun kembali saat
+    isiannya dikosongkan dan akan menumpuk di atas teks yang diketik.
+
+    `public/pwa/logo.png` adalah **salinan** `drawable/logo.png` milik Android,
+    bukan berkas yang dibuat sendiri. Kalau logo di Android diganti, salin lagi
+    ke sini — kalau tidak, kedua aplikasi diam-diam memakai logo berbeda.
+
 ---
 
 ## 5. Rekomendasi
