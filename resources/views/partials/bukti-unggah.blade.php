@@ -1,7 +1,10 @@
 {{--
-  Kartu unggah bukti foto, dipakai keempat tahap: pickup, barang sampai,
-  tarik barang, dan serah terima dokumen. Bentuknya sama persis supaya petugas
-  tidak perlu belajar ulang di tiap tahap.
+  Kartu unggah bukti foto, dipakai ketiga tahap: pickup, barang sampai, dan
+  tarik barang. Bentuknya sama persis supaya petugas tidak perlu belajar ulang
+  di tiap tahap.
+
+  Dulu ada tahap keempat (serah terima dokumen); tahap itu sudah dihapus dari
+  halaman usage ERP, jadi ikut dihapus di sini.
 
   Tanpa capture="environment": dengan atribut itu ponsel langsung membuka kamera
   dan galeri tidak bisa dipilih, padahal fotonya sering sudah diambil lebih dulu.

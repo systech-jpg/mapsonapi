@@ -51,9 +51,6 @@ class Detail extends Component
     /** Foto bukti barang sampai di RS. Menaikkan status ke Delivered/Ready. */
     public $buktiArrive = null;
 
-    /** Foto bukti serah terima dokumen, tahap terakhir setelah barang ditarik. */
-    public $buktiDokumen = null;
-
     public bool $isTS = false;
 
     /**
@@ -322,23 +319,12 @@ class Detail extends Component
         return filled($this->info['bukti_arrive'] ?? null);
     }
 
-    /** Bukti serah terima dokumen sudah pernah diunggah. */
-    public function adaBuktiDokumen(): bool
-    {
-        return filled($this->usage['bukti_dokumen'] ?? null);
-    }
-
-    /**
-     * Serah terima dokumen adalah tahap sesudah barang ditarik (status usage 4)
-     * dan sebelum gudang menekan Accept. Sama seperti pickup, formnya hilang
-     * begitu buktinya tersimpan.
+    /*
+     * Tahap SERAH TERIMA DOKUMEN sudah dihapus, mengikuti
+     * custom/tindakanmedis/usage.php yang tidak lagi punya form itu. Sesudah
+     * Tarik Barang (status 4), langkah berikutnya ACCEPT (WAREHOUSE) — aksi
+     * gudang di ERP, bukan aksi lapangan, jadi tidak ada padanannya di sini.
      */
-    public function bisaSerahTerima(): bool
-    {
-        return ! $this->sisiTs()
-            && (int) ($this->usage['status'] ?? 0) === 4
-            && ! $this->adaBuktiDokumen();
-    }
 
     /** Tarik barang hanya pada status usage 1 (Validated, menunggu ditarik). */
     public function bisaTarikBarang(): bool
@@ -469,32 +455,6 @@ class Detail extends Component
             "/tindakan/{$this->tindakanId}/confirm-arrival",
             'buktiArrive',
             'Barang dikonfirmasi sampai di RS. Foto bukti tersimpan.'
-        );
-    }
-
-    /**
-     * Serah terima dokumen: foto saja, status laporan tidak berubah. Yang
-     * berganti hanya labelnya di ERP, dan label itu ditentukan dari ada
-     * tidaknya berkas DOK_TERIMA.
-     */
-    public function serahTerima()
-    {
-        if (! $this->bisaSerahTerima()) {
-            return;
-        }
-
-        $this->validate([
-            'buktiDokumen' => ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:8192'],
-        ], [
-            'buktiDokumen.required' => 'Ambil atau pilih foto bukti serah terima dulu.',
-            'buktiDokumen.image' => 'Berkas yang dipilih bukan foto.',
-            'buktiDokumen.max' => 'Ukuran foto maksimal 8 MB.',
-        ]);
-
-        return $this->unggahBukti(
-            "/tindakan/usage/{$this->tindakanId}/dokumen-terima",
-            'buktiDokumen',
-            'Bukti serah terima dokumen tersimpan.'
         );
     }
 

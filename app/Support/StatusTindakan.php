@@ -28,6 +28,11 @@ class StatusTindakan
             // --- Status Usage Report ---
             self::ada($teks, 'Menunggu Tarik Barang') => 'hijau',
             self::ada($teks, 'Barang Ditarik') => 'ungu',
+            // Cabang dari Validated: sisa barang dipindah ke tindakan lain,
+            // bukan ditarik ke gudang. Ditulis eksplisit walau warnanya sama
+            // dengan default — supaya jelas ia sudah dikenali, bukan status
+            // asing yang kebetulan jatuh ke fallback. ERP memakai badge gelap.
+            self::ada($teks, 'Transit') => 'netral',
             self::ada($teks, 'Accepted') => 'toska',
             self::ada($teks, 'Ordered') => 'brand',
 

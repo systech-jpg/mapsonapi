@@ -89,6 +89,7 @@ dari session. Jadi web dan Android berbagi endpoint yang sama persis.
 | Scan Produk | selesai (kamera ZXing, wajib HTTPS) |
 | Stocktake | daftar dokumen, isi hitungan fisik (rak/tray/container), saring principal, cari + scan barcode, catatan per baris. Dokumen tetap dibuat, divalidasi, dan di-approve di ERP |
 | Chat | daftar percakapan + badge belum dibaca, chat personal & grup, kirim teks + lampiran, buat grup, realtime Pusher, notifikasi Web Push. Tambah anggota grup belum ada di UI (endpoint-nya ada) |
+| Login QR ERP | selesai. Halaman login ERP menampilkan QR, PWA memindainya dari layar Scan yang sama dengan scan produk, lalu menyetujui. Modul ERP-nya di `mapsonerp/custom/qrlogin/` |
 
 Modul Android di `C:\android\warehousmap\app\src\main\java\com\mapson\id\ui\`
 adalah **acuan alur**. Baca dulu sebelum membuat modul baru — komentar di
@@ -248,28 +249,40 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     lewat `simpanBukti()`, dan mencatat log dengan tautan `document.php` yang
     bentuknya sama dengan `tm_proof_badge()` di ERP.
 
-    Empat tahap, semuanya wajib foto, urutannya mengikuti ERP:
+    TIGA tahap, semuanya wajib foto, urutannya mengikuti ERP:
 
     | Tahap | Endpoint | Prefix | Syarat | Ubah status? |
     |---|---|---|---|---|
     | Pickup | `POST /tindakan/{id}/pickup` | PICKUP | tindakan status 2 | tidak |
     | Barang sampai | `POST /tindakan/{id}/confirm-arrival` | ARRIVE | tindakan status 2 | ya, 2 → 3 |
     | Tarik barang | `POST /tindakan/usage/{id}/tarik-barang` | TARIK | usage status 1 | ya, 1 → 4 |
-    | Serah terima | `POST /tindakan/usage/{id}/dokumen-terima` | DOK_TERIMA | usage status 4 | tidak |
 
-    Pickup dan serah terima menolak unggahan kedua dengan 409 kecuali diberi
-    `ganti=1`, mengikuti penjagaan yang sama di ERP.
+    **Tahap keempat SERAH TERIMA DOKUMEN (DOK_TERIMA) sudah dihapus** — dari
+    `custom/tindakanmedis/usage.php` di ERP lebih dulu, lalu dari PWA menyusul.
+    Sesudah Tarik Barang, langkah berikutnya adalah tombol **ACCEPT
+    (WAREHOUSE)** yang mengubah status 4 → 2 dan memberi nomor PRMM; itu aksi
+    gudang di ERP, bukan aksi lapangan, jadi tidak ada padanannya di PWA. Yang
+    ikut dibuang: `dokumenTerima()`, `buktiDokumen()`, `BUKTI_DOKUMEN_PREFIX`,
+    field `bukti_dokumen` di respons usage, route API `dokumen-terima` dan
+    `bukti-dokumen`, route web `tindakan.bukti-dokumen`, serta
+    `bisaSerahTerima()`/`serahTerima()` di komponen Detail. Aplikasi Android
+    tidak pernah memanggil endpoint itu, jadi tidak ada klien yang ikut rusak.
+
+    Berkas `DOK_TERIMA_*` milik dokumen lama **tetap ada di disk** dan masih
+    tampil di `history.php` ERP. Yang dihapus tahapnya, bukan buktinya —
+    jangan membersihkan berkasnya.
+
+    Pickup menolak unggahan kedua dengan 409 kecuali diberi `ganti=1`,
+    mengikuti penjagaan yang sama di ERP.
 
     Di PWA, konfirmasi "Barang Sampai" menuntut bukti pickup sudah ada lebih
     dulu — sama seperti ERP yang baru menggambar form berikutnya setelah bukti
-    pickup tersimpan. Keempat kartunya memakai satu partial bersama
+    pickup tersimpan. Ketiga kartunya memakai satu partial bersama
     `resources/views/partials/bukti-unggah.blade.php`.
 
     Log tahap barang sampai memakai action `ARRIVAL`, bukan `STATUS_DELIVERED`
     seperti ERP: `Tindakan::getLogActionLabel()` mengenal ARRIVAL dan
     menerjemahkannya, sedangkan STATUS_DELIVERED tampil sebagai kode mentah.
-    Serah terima memakai action `'DOKUMEN DITERIMA'` — dengan spasi, bukan garis
-    bawah, karena halaman usage ERP mencarinya persis begitu.
 
 13. **`qty_used` tidak boleh melebihi `qty_sent`.** Dijaga di
     `saveUsageLines()` (422, diperiksa sebelum transaksi dibuka) dan sekali
@@ -465,6 +478,59 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     `public/pwa/logo.png` adalah **salinan** `drawable/logo.png` milik Android,
     bukan berkas yang dibuat sendiri. Kalau logo di Android diganti, salin lagi
     ke sini — kalau tidak, kedua aplikasi diam-diam memakai logo berbeda.
+
+24. **Login QR ERP: satu fitur, dua project.** Kodenya terbagi antara PWA ini
+    (`QrLoginController` + layar Scan) dan modul ERP di
+    `C:\Users\USER\Herd\mapsonerp\custom\qrlogin\`. Jembatannya bukan HTTP,
+    melainkan **database yang sama**: `mapsonerpdb`, tabel `llxjp_qr_login`.
+    Kalau salah satu sisi diubah, baca README modul ERP-nya lebih dulu.
+
+    Teks di kode QR adalah `MAPSONLOGIN:<token>`. Awalan itu ditulis di DUA
+    tempat — `Scan\Produk::AWALAN_QR_LOGIN` dan `custom/qrlogin/api.php` — dan
+    keduanya wajib sama persis. Awalan inilah yang membuat satu layar kamera
+    bisa melayani dua tujuan: yang berawalan itu tidak pernah dicari sebagai
+    produk (kalau dicari, jawabannya pasti 404 dan petugas melihat "Produk
+    tidak ditemukan" untuk kode yang sebenarnya sehat).
+
+    Empat hal yang mudah merusaknya:
+
+    - **`conf/conf.php` ERP harus `'dolibarr,qrlogin'`**, dengan `dolibarr` di
+      DEPAN. Tanpa `qrlogin`, token tidak pernah diperiksa dan QR-nya diam saja.
+      Kalau `qrlogin` ditaruh di depan, setiap login biasa ikut mencari kata
+      sandinya di tabel token. Cadangan berkas aslinya:
+      `conf/conf.php.sebelum-qrlogin`.
+    - **`module_parts['hooks']` berisi KONTEKS, bukan nama method.** Halaman
+      login memanggil `initHooks(array('mainloginpage'))`, jadi isinya harus
+      `array('mainloginpage')`. Sempat diisi nama method
+      (`getLoginPageOptions`) dan akibatnya hook tidak pernah berjalan — tanpa
+      pesan galat apa pun.
+    - **Nama berkas dan kelas hook tidak boleh diubah.**
+      `hookmanager.class.php` menyusunnya sendiri dari nama modul:
+      `actions_qrlogin.class.php` dan `ActionsQrlogin`.
+    - **Token saja tidak cukup untuk masuk; ada `qrsecret`.** Token tampil di
+      layar dan bisa difoto, rahasianya tidak pernah masuk ke gambar QR. Kalau
+      suatu saat isian tersembunyi `qrsecret` hilang dari form login, login QR
+      akan selalu gagal walau QR-nya terpindai dengan benar.
+
+    Persetujuan di PWA **sengaja tidak otomatis**. Memindai saja tidak cukup:
+    kode QR palsu yang ditempel di gudang bisa membuat petugas memberikan sesi
+    ERP atas namanya kepada penyerang. Jangan hilangkan layar konfirmasinya.
+
+25. **Status Usage Report tidak berurutan, dan 5 mudah terlupa.** Alurnya di
+    ERP: `0 Draft → 1 Validated → (4 Barang Ditarik | 5 Transit Barang) →
+    2 Accepted → 3 Ordered`. Angka 4 dan 5 disisipkan belakangan di antara 1 dan
+    2; jangan "dirapikan" menjadi berurutan.
+
+    Status **5 Transit Barang** sempat tidak ada di `getUsageStatusLabel()`,
+    sehingga laporan yang ditransit tampil sebagai "Unknown" di mobile padahal
+    statusnya sah — dan di database memang sudah ada barisnya. Transit adalah
+    cabang dari status 1: sisa barang dipindahkan ke tindakan lain alih-alih
+    ditarik ke gudang (`UsageReport::transitBarang()`), lalu sama-sama berujung
+    di ACCEPT.
+
+    Label-labelnya harus sama persis dengan badge di
+    `custom/tindakanmedis/usage.php`. Kalau ERP menambah status lagi, di
+    `getUsageStatusLabel()` tempat menambahkannya.
 
 ---
 

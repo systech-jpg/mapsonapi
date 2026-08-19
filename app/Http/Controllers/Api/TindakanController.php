@@ -33,8 +33,11 @@ class TindakanController extends Controller
      *
      * Nilainya HARUS sama persis dengan badge di custom/tindakanmedis/usage.php,
      * supaya status yang dilihat TS di mobile identik dengan yang dilihat admin
-     * di ERP. Perhatikan urutannya tidak berurutan: 4 disisipkan di antara 1 dan
-     * 2, dan itu memang skema di database -- jangan "dirapikan".
+     * di ERP. Perhatikan urutannya tidak berurutan: 4 dan 5 disisipkan di antara
+     * 1 dan 2, dan itu memang skema di database -- jangan "dirapikan".
+     *
+     * Alurnya di ERP: 0 Draft -> 1 Validated -> (4 Tarik Barang | 5 Transit
+     * Barang) -> 2 Accepted -> 3 Ordered.
      */
     private function getUsageStatusLabel($status)
     {
@@ -42,6 +45,10 @@ class TindakanController extends Controller
             case 0: return 'Draft';
             case 1: return 'Validated (Menunggu Tarik Barang)';
             case 4: return 'Barang Ditarik (Menunggu Accept)';
+            // Cabang TRANSIT BARANG: sisa barang dipindahkan ke tindakan lain
+            // alih-alih ditarik kembali ke gudang. Tanpa baris ini, laporan yang
+            // ditransit tampil sebagai "Unknown" di mobile padahal statusnya sah.
+            case 5: return 'Transit Barang';
             case 2: return 'Accepted (Warehouse)';
             case 3: return 'Ordered (SO Created)';
             default: return 'Unknown';
@@ -621,113 +628,6 @@ class TindakanController extends Controller
     }
 
     /**
-     * Upload Bukti Serah Terima Dokumen (Dokumen Diterima).
-     *
-     * Meniru action do_dok_terima di custom/tindakanmedis/usage.php: hanya
-     * menyimpan foto dan mencatat log, TIDAK mengubah status. Statusnya tetap 4;
-     * yang berubah hanya labelnya di ERP, dari "Barang Ditarik (Menunggu Dokumen
-     * Diterima)" menjadi "Dokumen Diterima (Menunggu Accept)" -- dan label itu
-     * ditentukan dari ada tidaknya berkas DOK_TERIMA, bukan dari kolom status.
-     */
-    public function dokumenTerima(Request $request, $tindakan_id)
-    {
-        $user = $request->attributes->get('dolibarr_user');
-
-        if (!$user) {
-            return $this->errorResponse('User tidak terautentikasi.', 401);
-        }
-
-        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
-        if (!$tindakan) {
-            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
-        }
-
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-            'bukti' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:8192',
-        ], [
-            'bukti.required' => 'Foto bukti serah terima dokumen wajib disertakan.',
-            'bukti.image' => 'Bukti serah terima harus berupa foto.',
-            'bukti.max' => 'Ukuran foto maksimal 8 MB.',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->errorResponse($validator->errors()->first(), 422);
-        }
-
-        $usage = DB::table('llxjp_usage_report')->where('fk_tindakan', $tindakan_id)->first();
-
-        if (!$usage) {
-            return $this->errorResponse('Laporan pemakaian belum dibuat.', 400);
-        }
-
-        // Tahap ini hanya sah setelah barang ditarik (status 4), sama dengan
-        // syarat form di halaman usage ERP.
-        if ((int) $usage->status !== 4) {
-            return $this->errorResponse('Serah terima dokumen hanya bisa setelah Barang Ditarik.', 400);
-        }
-
-        $sudahAda = $this->berkasBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX);
-        $ganti = (bool) $request->input('ganti');
-
-        if ($sudahAda && !$ganti) {
-            return $this->errorResponse(
-                'Bukti serah terima dokumen sudah tersimpan. Kirim ganti=1 bila memang ingin menggantinya.',
-                409
-            );
-        }
-
-        [$namaBaru, $galat] = $this->simpanBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX, $request->file('bukti'));
-
-        if (!$namaBaru) {
-            return $this->errorResponse($galat, 500);
-        }
-
-        $tautan = '<a href="' . $this->tautanBukti($tindakan->ref, $namaBaru) . '" target="_blank" '
-            . 'class="badge badge-info" style="color:#fff;">Lihat Bukti Dokumen</a>';
-
-        // Nama aksinya memang memakai spasi, bukan garis bawah. Halaman usage
-        // ERP mencari baris 'DOKUMEN DITERIMA' persis begitu.
-        $this->logUsageActivity(
-            $usage->rowid,
-            'DOKUMEN DITERIMA',
-            $user,
-            $sudahAda ? 'Bukti dokumen diganti ' . $tautan : $tautan,
-            $usage->status
-        );
-
-        return $this->successResponse([
-            'ref' => $usage->ref,
-            'bukti_nama' => $namaBaru,
-            'bukti_dokumen' => 'tindakan/usage/' . (int) $tindakan_id . '/bukti-dokumen',
-        ], 'Bukti serah terima dokumen berhasil disimpan.');
-    }
-
-    /**
-     * Menampilkan foto bukti serah terima dokumen.
-     */
-    public function buktiDokumen(Request $request, $tindakan_id)
-    {
-        $user = $request->attributes->get('dolibarr_user');
-
-        if (!$user) {
-            return $this->errorResponse('User tidak terautentikasi.', 401);
-        }
-
-        $tindakan = DB::table('llxjp_tindakan')->where('id', $tindakan_id)->first();
-        if (!$tindakan) {
-            return $this->errorResponse('Data Tindakan tidak ditemukan.', 404);
-        }
-
-        $berkas = $this->berkasBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX);
-
-        if (!$berkas) {
-            return $this->errorResponse('Bukti serah terima dokumen belum diunggah.', 404);
-        }
-
-        return response()->file($berkas);
-    }
-
-    /**
      * Helper: Mendapatkan Usage Report, atau otomatis men-generate jika belum ada (Auto-Create).
      */
     private function getOrCreateUsageReport($tindakan, $user = null)
@@ -870,10 +770,6 @@ class TindakanController extends Controller
         // endpoint gambarnya lebih dulu; null berarti belum diunggah.
         $usage->bukti_tarik = $this->berkasBukti($tindakan->ref, self::BUKTI_TARIK_PREFIX)
             ? 'tindakan/usage/' . (int) $id . '/bukti-tarik'
-            : null;
-
-        $usage->bukti_dokumen = $this->berkasBukti($tindakan->ref, self::BUKTI_DOKUMEN_PREFIX)
-            ? 'tindakan/usage/' . (int) $id . '/bukti-dokumen'
             : null;
 
         // Paket Tray IKUT ditampilkan. getOrCreateUsageReport() menyalin produk
@@ -1104,13 +1000,17 @@ class TindakanController extends Controller
      * Awalan nama berkas bukti per tahap.
      *
      * Nilainya HARUS sama dengan prefix di custom/tindakanmedis/ (prepare.php
-     * untuk PICKUP & ARRIVE, usage.php untuk TARIK & DOK_TERIMA), karena halaman
-     * ERP mencari buktinya dengan glob <PREFIX>_* — bukan dengan membaca kolom
-     * atau baris log.
+     * untuk PICKUP & ARRIVE, usage.php untuk TARIK), karena halaman ERP mencari
+     * buktinya dengan glob <PREFIX>_* — bukan dengan membaca kolom atau baris
+     * log.
+     *
+     * DOK_TERIMA sudah TIDAK ADA lagi: tahap serah terima dokumen dihapus dari
+     * usage.php, digantikan tombol ACCEPT (WAREHOUSE) yang dikerjakan di ERP.
+     * Berkas DOK_TERIMA milik dokumen lama tetap ada di disk dan masih tampil
+     * di history.php ERP — yang dihapus cuma tahapnya, bukan buktinya.
      */
     private const BUKTI_PICKUP_PREFIX = 'PICKUP';
     private const BUKTI_ARRIVE_PREFIX = 'ARRIVE';
-    private const BUKTI_DOKUMEN_PREFIX = 'DOK_TERIMA';
     private const BUKTI_TARIK_PREFIX = 'TARIK';
 
     /**

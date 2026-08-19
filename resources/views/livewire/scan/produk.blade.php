@@ -25,38 +25,93 @@
   <p id="scan-keadaan" wire:ignore class="text-secondary small text-center mt-2 mb-0">Menyiapkan kamera…</p>
 
   <div class="bg-white rounded-4 p-3 shadow-sm mt-3">
-    <div wire:loading wire:target="terimaBarcode, scanManual" class="text-center text-secondary py-2">
+    {{-- Kalimatnya netral ("kode", bukan "produk"): lensa yang sama sekarang
+         juga membaca kode QR login ERP. --}}
+    <div wire:loading wire:target="terimaBarcode, scanManual, setujuiLogin, tolakLogin"
+         class="text-center text-secondary py-2">
       <span class="spinner-border spinner-border-sm" role="status"></span>
-      <span class="ms-2">Mencari produk…</span>
+      <span class="ms-2">Membaca kode…</span>
     </div>
 
-    <div wire:loading.remove wire:target="terimaBarcode, scanManual">
-      @if ($pesan)
-        <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-2">
-          <i class="bi bi-exclamation-triangle-fill"></i>
-          <span class="small">{{ $pesan }}</span>
+    <div wire:loading.remove wire:target="terimaBarcode, scanManual, setujuiLogin, tolakLogin">
+      @if ($login)
+        {{-- Konfirmasi masuk ke ERP. IP dan peramban ditampilkan supaya petugas
+             bisa mencocokkannya dengan komputer di depannya; kode QR yang
+             ditempel orang lain hampir pasti datang dari alamat yang asing. --}}
+        <div class="text-center">
+          <i class="bi bi-display fs-1 text-secondary d-block"></i>
+          <div class="fw-bold fs-5 mt-1">Masuk ke ERP?</div>
+          <p class="text-secondary small mb-3">
+            Ada komputer yang minta dibukakan ERP sebagai akun Anda.
+          </p>
         </div>
-      @endif
 
-      @if ($hasil)
-        <div class="fw-bold fs-5">{{ $hasil['judul'] }}</div>
+        <dl class="tk-info mb-3">
+          <dt>Alamat IP</dt>
+          <dd>{{ $login['ip'] ?: '—' }}</dd>
 
-        @if ($hasil['deskripsi'] !== '')
-          <p class="text-secondary small scan-deskripsi mb-0 mt-1">{{ $hasil['deskripsi'] }}</p>
-        @endif
+          <dt>Peramban</dt>
+          <dd>{{ $login['peramban'] ?? '—' }}</dd>
 
-        <hr class="my-3">
+          <dt>Berlaku</dt>
+          <dd>{{ $login['sisa_detik'] ?? 0 }} detik lagi</dd>
+        </dl>
 
-        <div class="d-flex justify-content-between align-items-center">
-          <span class="text-secondary">Stok saat ini</span>
-          <span class="scan-stok {{ $this->stokMinus() ? 'minus' : 'plus' }}">{{ $this->stokTampil() }}</span>
+        <div class="alert alert-warning small py-2">
+          <i class="bi bi-shield-exclamation me-1"></i>
+          Kalau bukan Anda yang sedang membuka ERP, tekan <strong>Bukan saya</strong>.
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-emas w-50" wire:click="tolakLogin"
+                  wire:loading.attr="disabled" wire:target="tolakLogin, setujuiLogin">
+            Bukan saya
+          </button>
+          <button type="button" class="btn btn-emas w-50" wire:click="setujuiLogin"
+                  wire:loading.attr="disabled" wire:target="tolakLogin, setujuiLogin">
+            <i class="bi bi-check-lg me-1"></i> Setujui
+          </button>
+        </div>
+      @elseif ($loginSelesai)
+        <div class="text-center py-2">
+          <i class="bi bi-check-circle-fill fs-1 text-secondary d-block mb-2"></i>
+          <p class="mb-0">{{ $pesanLogin }}</p>
         </div>
 
         <button type="button" class="btn btn-emas w-100 mt-3" wire:click="ulangi">
           <i class="bi bi-arrow-repeat me-1"></i> Scan Lagi
         </button>
       @else
-        <p class="text-secondary text-center small mb-0">Arahkan kamera ke barcode produk.</p>
+        {{-- Jalur produk: tidak berubah sama sekali dari sebelum ada login QR. --}}
+        @if ($pesan)
+          <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-2">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span class="small">{{ $pesan }}</span>
+          </div>
+        @endif
+
+        @if ($hasil)
+          <div class="fw-bold fs-5">{{ $hasil['judul'] }}</div>
+
+          @if ($hasil['deskripsi'] !== '')
+            <p class="text-secondary small scan-deskripsi mb-0 mt-1">{{ $hasil['deskripsi'] }}</p>
+          @endif
+
+          <hr class="my-3">
+
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="text-secondary">Stok saat ini</span>
+            <span class="scan-stok {{ $this->stokMinus() ? 'minus' : 'plus' }}">{{ $this->stokTampil() }}</span>
+          </div>
+
+          <button type="button" class="btn btn-emas w-100 mt-3" wire:click="ulangi">
+            <i class="bi bi-arrow-repeat me-1"></i> Scan Lagi
+          </button>
+        @else
+          <p class="text-secondary text-center small mb-0">
+            Arahkan kamera ke barcode produk, atau ke kode QR di halaman login ERP.
+          </p>
+        @endif
       @endif
     </div>
 

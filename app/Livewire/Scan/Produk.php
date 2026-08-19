@@ -21,10 +21,33 @@ use Livewire\Component;
  */
 class Produk extends Component
 {
+    /**
+     * Awalan isi kode QR login ERP.
+     *
+     * Inilah yang membuat satu layar kamera bisa melayani dua hal. Barcode
+     * produk tidak pernah berbentuk seperti ini — ia berupa angka atau kode
+     * ref — jadi awalan ini cukup untuk memilah tanpa perlu bertanya ke server
+     * lebih dulu. Nilainya HARUS sama persis dengan yang ditulis
+     * custom/qrlogin/api.php di project mapsonerp.
+     */
+    public const AWALAN_QR_LOGIN = 'MAPSONLOGIN:';
+
     /** Hasil scan terakhir: judul, deskripsi, stok. null berarti belum ada. */
     public ?array $hasil = null;
 
     public ?string $pesan = null;
+
+    /**
+     * Permintaan login ERP yang sedang menunggu jawaban petugas.
+     * Berisi token, ip, peramban, sisa_detik.
+     */
+    public ?array $login = null;
+
+    /** Kalimat hasil dari alur login QR (berhasil maupun ditolak server). */
+    public ?string $pesanLogin = null;
+
+    /** true setelah disetujui atau ditolak — kartunya berganti jadi ringkasan. */
+    public bool $loginSelesai = false;
 
     /**
      * Jalan keluar bila kamera tidak bisa dipakai — misalnya halaman dibuka
@@ -57,7 +80,19 @@ class Produk extends Component
             return;
         }
 
+        // Percabangan "kamera pintar": satu lensa, dua tujuan. Kode QR login ERP
+        // dikenali dari awalannya dan tidak pernah dicari sebagai produk —
+        // kalau dicari, jawabannya pasti 404 dan petugas melihat "Produk tidak
+        // ditemukan" untuk kode yang sebenarnya baik-baik saja.
+        if (str_starts_with($barcode, self::AWALAN_QR_LOGIN)) {
+            $this->bacaQrLogin(substr($barcode, strlen(self::AWALAN_QR_LOGIN)));
+
+            return;
+        }
+
         $this->pesan = null;
+        $this->login = null;
+        $this->pesanLogin = null;
 
         try {
             $data = Api::post('/products/scan', ['barcode' => $barcode])['data'] ?? null;
@@ -115,7 +150,92 @@ class Produk extends Component
         $this->pesan = null;
         $this->barcodeManual = '';
 
+        $this->login = null;
+        $this->pesanLogin = null;
+        $this->loginSelesai = false;
+
         $this->dispatch('scan-lagi');
+    }
+
+    /* =========================================================
+       Login ERP lewat kode QR
+       ========================================================= */
+
+    /**
+     * Mengambil keterangan permintaan login, lalu menahannya di layar sampai
+     * petugas menjawab.
+     *
+     * Persetujuannya SENGAJA tidak otomatis. Kalau memindai saja sudah cukup
+     * untuk masuk, siapa pun bisa menempelkan kode QR miliknya di gudang: satu
+     * petugas memindainya karena mengira itu barcode barang, dan penyerang
+     * mendapat sesi ERP atas nama petugas itu. Layar konfirmasi menyebutkan IP
+     * dan peramban peminta, supaya yang diketuk adalah keputusan, bukan refleks.
+     */
+    protected function bacaQrLogin(string $token): void
+    {
+        $this->hasil = null;
+        $this->pesan = null;
+        $this->login = null;
+        $this->pesanLogin = null;
+        $this->loginSelesai = false;
+
+        try {
+            $this->login = Api::get('/qr-login/' . $token)['data'] ?? null;
+        } catch (RequestException $e) {
+            $this->pesanLogin = $e->response->json('message') ?? 'Kode QR tidak bisa dipakai.';
+            $this->loginSelesai = true;
+        } catch (\Throwable $e) {
+            $this->pesanLogin = 'Gagal menghubungi server. Coba lagi.';
+            $this->loginSelesai = true;
+        }
+
+        // Kamera dibekukan apa pun hasilnya: layar ini menuntut jawaban, dan
+        // kode berikutnya yang lewat di depan lensa tidak boleh menggantinya.
+        $this->dispatch('produk-ketemu');
+    }
+
+    /** Komputer di seberang boleh masuk sebagai saya. */
+    public function setujuiLogin(): void
+    {
+        $token = $this->login['token'] ?? null;
+
+        if (! $token) {
+            return;
+        }
+
+        try {
+            $hasil = Api::post('/qr-login/' . $token . '/approve');
+            $nama = $hasil['data']['nama'] ?? 'akun Anda';
+
+            $this->pesanLogin = 'Disetujui. Komputer itu sedang dibukakan sebagai ' . $nama . '.';
+        } catch (RequestException $e) {
+            $this->pesanLogin = $e->response->json('message') ?? 'Persetujuan ditolak server.';
+        } catch (\Throwable $e) {
+            $this->pesanLogin = 'Gagal menghubungi server. Belum ada yang disetujui.';
+        }
+
+        $this->login = null;
+        $this->loginSelesai = true;
+    }
+
+    /** Bukan saya yang membuka ERP — kodenya dimatikan. */
+    public function tolakLogin(): void
+    {
+        $token = $this->login['token'] ?? null;
+
+        if (! $token) {
+            return;
+        }
+
+        try {
+            Api::post('/qr-login/' . $token . '/reject');
+            $this->pesanLogin = 'Permintaan ditolak. Kode itu tidak bisa dipakai lagi.';
+        } catch (\Throwable $e) {
+            $this->pesanLogin = 'Gagal menghubungi server. Kode belum tentu tertolak.';
+        }
+
+        $this->login = null;
+        $this->loginSelesai = true;
     }
 
     /**

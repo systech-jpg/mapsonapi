@@ -219,9 +219,10 @@ Route::middleware('api.auth')->group(function () {
         return \App\Support\Api::teruskanGambar("/tindakan/usage/{$id}/bukti-tarik", $id, 'bukti-tarik');
     })->whereNumber('id')->name('tindakan.bukti-tarik');
 
-    Route::get('/tindakan/{id}/bukti-dokumen', function (int $id) {
-        return \App\Support\Api::teruskanGambar("/tindakan/usage/{$id}/bukti-dokumen", $id, 'bukti-dokumen');
-    })->whereNumber('id')->name('tindakan.bukti-dokumen');
+    /*
+    | Route tindakan.bukti-dokumen sudah dihapus bersama tahap serah terima
+    | dokumen — endpoint API-nya juga tidak ada lagi.
+    */
 
 
     Route::get('/tindakan/{id}/surat-jalan', function (int $id) {

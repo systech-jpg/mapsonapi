@@ -153,9 +153,12 @@
     @endforelse
 
     {{-- Rantai bukti foto, urutannya mengikuti alur di ERP:
-         pickup -> barang sampai -> tarik barang -> serah terima dokumen.
+         pickup -> barang sampai -> tarik barang.
          Tiap tahap hanya menampilkan satu dari dua bentuk: form unggah bila
-         belum ada buktinya, atau fotonya bila sudah. --}}
+         belum ada buktinya, atau fotonya bila sudah.
+
+         Rantainya berhenti di tarik barang. Langkah sesudahnya di ERP adalah
+         ACCEPT (WAREHOUSE), yang tidak berbukti foto dan bukan aksi lapangan. --}}
 
     @if ($this->bisaPickup())
       @include('partials.bukti-unggah', [
@@ -196,18 +199,9 @@
       @include('partials.bukti-tampil', ['judul' => 'Bukti Tarik Barang', 'rute' => 'tindakan.bukti-tarik', 'id' => $tindakanId])
     @endif
 
-    @if ($this->bisaSerahTerima())
-      @include('partials.bukti-unggah', [
-        'judul' => 'Bukti Serah Terima Dokumen',
-        'keterangan' => 'Foto dokumen yang diserahterimakan. Status laporan tidak berubah, hanya keterangannya di ERP.',
-        'properti' => 'buktiDokumen',
-        'aksi' => 'serahTerima',
-        'tombol' => 'Simpan Serah Terima',
-        'ikon' => 'bi-file-earmark-check',
-      ])
-    @elseif ($this->adaBuktiDokumen())
-      @include('partials.bukti-tampil', ['judul' => 'Bukti Serah Terima Dokumen', 'rute' => 'tindakan.bukti-dokumen', 'id' => $tindakanId])
-    @endif
+    {{-- Kartu "Bukti Serah Terima Dokumen" sudah dihapus: tahapnya tidak ada
+         lagi di halaman usage ERP. Sesudah Tarik Barang, yang berikutnya adalah
+         ACCEPT (WAREHOUSE) — tombol milik gudang di ERP, bukan aksi lapangan. --}}
 
     {{-- Bilah aksi: isinya mengikuti peran dan status, sama seperti di Android. --}}
     @php

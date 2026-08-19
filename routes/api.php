@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\BeamsController;
 use App\Http\Controllers\Api\ForecastController;
 use App\Http\Controllers\Api\SphController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\QrLoginController;
 
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -94,12 +95,12 @@ Route::middleware('dolibarr.auth')->group(function () {
     // hanya bisa dibaca lewat route ini yang ikut middleware dolibarr.auth.
     Route::get('/tindakan/usage/{usage_id}/bukti-tarik', [TindakanController::class, 'buktiTarik']);
     /*
-    | Serah terima dokumen. Foto saja, status usage report tidak berubah —
-    | yang berganti hanya labelnya di ERP, dan label itu ditentukan dari ada
-    | tidaknya berkas DOK_TERIMA.
+    | Serah terima dokumen (dokumen-terima / bukti-dokumen) SUDAH DIHAPUS.
+    | Tahapnya tidak ada lagi di custom/tindakanmedis/usage.php: sesudah Tarik
+    | Barang, langkah berikutnya adalah tombol ACCEPT (WAREHOUSE) yang memang
+    | dikerjakan di ERP, bukan dari lapangan. Aplikasi Android tidak pernah
+    | memanggil kedua endpoint itu, jadi tidak ada klien yang ikut rusak.
     */
-    Route::post('/tindakan/usage/{usage_id}/dokumen-terima', [TindakanController::class, 'dokumenTerima']);
-    Route::get('/tindakan/usage/{usage_id}/bukti-dokumen', [TindakanController::class, 'buktiDokumen']);
 
     // Rute Sales Orders
     Route::get('/sales-orders', [SalesOrderController::class, 'index']);
@@ -155,6 +156,18 @@ Route::middleware('dolibarr.auth')->group(function () {
 
     // Rute Scan Produk (Android)
     Route::post('/products/scan', [ProductController::class, 'scan']);
+
+    /*
+    | Login ERP lewat kode QR.
+    |
+    | Halaman login ERP (modul custom/qrlogin) yang MEMBUAT permintaannya; di
+    | sini permintaan itu cuma disetujui atau ditolak, memakai identitas petugas
+    | yang sudah masuk di aplikasi ini. Karena itu tidak ada endpoint "create"
+    | di sisi ini — yang belum masuk tidak boleh membuat permintaan apa pun.
+    */
+    Route::get('/qr-login/{token}', [QrLoginController::class, 'info']);
+    Route::post('/qr-login/{token}/approve', [QrLoginController::class, 'approve']);
+    Route::post('/qr-login/{token}/reject', [QrLoginController::class, 'reject']);
 });
 
 // TEST ROUTE
