@@ -240,28 +240,20 @@
               <i class="bi bi-list-check me-1"></i> Lihat Laporan
             </a>
 
-            <a href="{{ route('tindakan.surat-jalan', $tindakanId) }}" class="btn btn-emas flex-fill">
-              <i class="bi bi-file-earmark-pdf me-1"></i> Surat Jalan
-            </a>
-
-            <button type="button" class="btn btn-outline-emas btn-ikon"
+            <button type="button" class="btn btn-emas flex-fill"
                     data-bagikan="{{ route('tindakan.surat-jalan', $tindakanId) }}"
                     data-bagikan-judul="Surat Jalan {{ $info['ref'] ?? '' }}"
                     aria-label="Bagikan surat jalan" title="Bagikan surat jalan">
-              <i class="bi bi-share"></i>
+              <i class="bi bi-share me-1"></i> Surat Jalan
             </button>
           @endif
         @else
           @if ($this->usageTerkunci())
-            <a href="{{ route('tindakan.surat-jalan', $tindakanId) }}" class="btn btn-outline-emas flex-fill">
-              <i class="bi bi-file-earmark-pdf me-1"></i> Surat Jalan
-            </a>
-
-            <button type="button" class="btn btn-outline-emas btn-ikon"
+            <button type="button" class="btn btn-outline-emas flex-fill"
                     data-bagikan="{{ route('tindakan.surat-jalan', $tindakanId) }}"
                     data-bagikan-judul="Surat Jalan {{ $info['ref'] ?? '' }}"
                     aria-label="Bagikan surat jalan" title="Bagikan surat jalan">
-              <i class="bi bi-share"></i>
+              <i class="bi bi-share me-1"></i> Surat Jalan
             </button>
           @endif
         @endif

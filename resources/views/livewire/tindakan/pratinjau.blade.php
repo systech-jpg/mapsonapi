@@ -114,15 +114,11 @@
           <i class="bi bi-arrow-left me-1"></i> Kembali
         </a>
 
-        <a href="{{ route('tindakan.surat-jalan', $tindakanId) }}" class="btn btn-emas flex-fill">
-          <i class="bi bi-file-earmark-pdf me-1"></i> Surat Jalan
-        </a>
-
-        <button type="button" class="btn btn-outline-emas btn-ikon"
+        <button type="button" class="btn btn-emas flex-fill"
                 data-bagikan="{{ route('tindakan.surat-jalan', $tindakanId) }}"
                 data-bagikan-judul="Surat Jalan {{ $usage['tindakan_ref'] ?? '' }}"
                 aria-label="Bagikan surat jalan" title="Bagikan surat jalan">
-          <i class="bi bi-share"></i>
+          <i class="bi bi-share me-1"></i> Surat Jalan
         </button>
       @else
         <a href="{{ route('tindakan.detail', $tindakanId) }}" wire:navigate class="btn btn-outline-emas flex-fill">
