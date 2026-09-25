@@ -276,6 +276,37 @@ input, select, textarea { font-size: 16px; }
 /* Ruang supaya baris terakhir tetap bisa digulir melewati bilah aksi. */
 .fc-ruang { height: 1rem; }
 
+/* Tombol berikon saja (mis. Bagikan). Tidak ikut flex-fill: tiga tombol
+   berteks di layar 360px tidak muat tanpa memotong labelnya. */
+.btn-ikon { flex: 0 0 auto; width: 3rem; padding-left: 0; padding-right: 0; }
+
+/* Kabar singkat di dasar layar, dipakai partials/bagikan-berkas. Diletakkan di
+   atas bilah aksi yang menempel (.fc-aksi) supaya tidak tertutup. */
+.kabar {
+  position: fixed;
+  left: 1rem; right: 1rem;
+  bottom: calc(5rem + env(safe-area-inset-bottom));
+  z-index: 1060;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: .65rem .9rem;
+  border-radius: 12px;
+  background: rgba(17, 17, 17, .88);
+  color: #fff;
+  font-size: .85rem;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(.5rem);
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+.kabar.tampil { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kabar { transition: none; }
+}
+
 /* ---------- Lembar dialog ---------- */
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 1040;

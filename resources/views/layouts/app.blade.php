@@ -196,6 +196,8 @@
        akan pernah muncul. --}}
   @include('partials.pusher-chat')
 
+  @include('partials.bagikan-berkas')
+
   @stack('scripts')
 </body>
 </html>

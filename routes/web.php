@@ -233,12 +233,23 @@ Route::middleware('api.auth')->group(function () {
         if ($response->failed() || ! str_contains(strtolower($tipe), 'pdf')) {
             $pesan = $response->json('message') ?? 'Surat jalan belum bisa diunduh.';
 
+            // Tombol Bagikan mengambil berkas ini lewat fetch(). Pengalihan
+            // membuat pesannya habis terbaca oleh halaman yang tidak pernah
+            // tampil, jadi untuknya pesan dijawab sebagai JSON.
+            if (request()->expectsJson()) {
+                return response()->json(['message' => $pesan], 422);
+            }
+
             return redirect()->route('tindakan.detail', $id)->with('galat', $pesan);
         }
 
+        // Nama berkas dari API memuat nomor surat jalan (Surat-Jalan-DO-...).
+        // Nama cadangan hanya memuat id tindakan, yang tidak berarti apa-apa
+        // bagi penerima berkas yang dibagikan.
         return response($response->body(), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="surat-jalan-' . $id . '.pdf"',
+            'Content-Disposition' => $response->header('Content-Disposition')
+                ?: 'attachment; filename="surat-jalan-' . $id . '.pdf"',
         ]);
     })->whereNumber('id')->name('tindakan.surat-jalan');
     Route::get('/sales-order', fn () => view('sales-order.index'))->name('sales-order');
