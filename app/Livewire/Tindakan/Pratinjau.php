@@ -68,6 +68,20 @@ class Pratinjau extends Component
         }
     }
 
+    /**
+     * Jumlah per kolom untuk kartu ringkasan, dihitung dari baris yang sama
+     * dengan tabel di bawahnya supaya kedua angka tidak pernah berselisih.
+     */
+    public function total(): array
+    {
+        return [
+            'kirim' => array_sum(array_column($this->baris, 'kirim')),
+            'pakai' => array_sum(array_column($this->baris, 'pakai')),
+            'kembali' => array_sum(array_column($this->baris, 'kembali')),
+            'terpakai' => count(array_filter($this->baris, fn ($b) => $b['pakai'] > 0)),
+        ];
+    }
+
     public function terkunci(): bool
     {
         return (int) ($this->usage['status'] ?? 0) !== 0;

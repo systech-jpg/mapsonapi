@@ -12,7 +12,7 @@
     <h1>Pratinjau Laporan</h1>
   </header>
 
-  <div class="px-3" style="margin-top: -2.25rem;">
+  <div class="px-3 pv-halaman" style="margin-top: -2.25rem;">
     @if (session('pesan'))
       <div class="alert alert-success d-flex align-items-center gap-2">
         <i class="bi bi-check-circle-fill"></i>

@@ -14,40 +14,72 @@
   @endif
 
   @if ($usage)
-    @php $label = $usage['status_label'] ?? '-'; @endphp
+    @php
+      $label = $usage['status_label'] ?? '-';
+      $total = $this->total();
+    @endphp
 
-    <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-      <div class="min-width-0">
-        <div class="fw-bold">{{ $usage['ref'] ?? '-' }}</div>
-        <div class="text-secondary small text-truncate">
-          {{ $usage['tindakan_ref'] ?? '-' }} · {{ $usage['rs_name'] ?? '-' }}
+    {{-- Ref dan status wajib di dalam kartu: halaman ini naik menimpa header
+         (margin-top negatif), jadi teks yang ditulis telanjang terbelah dua
+         antara pita emas dan latar putih. --}}
+    <div class="bg-white rounded-4 p-3 shadow-sm mb-2">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="min-width-0">
+          <div class="fw-bold">{{ $usage['ref'] ?? '-' }}</div>
+          <div class="text-secondary small">{{ $usage['tindakan_ref'] ?? '-' }}</div>
+          <div class="text-secondary small">{{ $usage['rs_name'] ?? '-' }}</div>
+        </div>
+        <span class="tk-status {{ \App\Support\StatusTindakan::warna($label) }} flex-shrink-0 text-center">{{ $label }}</span>
+      </div>
+
+      <div class="pv-ringkas mt-3">
+        <div class="pv-kotak">
+          <span>Kirim</span>
+          <strong>{{ $total['kirim'] }}</strong>
+        </div>
+        <div class="pv-kotak pv-kotak-pakai">
+          <span>Pakai</span>
+          <strong>{{ $total['pakai'] }}</strong>
+        </div>
+        <div class="pv-kotak">
+          <span>Kembali</span>
+          <strong>{{ $total['kembali'] }}</strong>
         </div>
       </div>
-      <span class="tk-status {{ \App\Support\StatusTindakan::warna($label) }} flex-shrink-0">{{ $label }}</span>
+
+      <div class="text-secondary small mt-2">
+        {{ $total['terpakai'] }} dari {{ count($baris) }} jenis barang terpakai.
+      </div>
+
+      @if ($this->terkunci())
+        <div class="pv-catatan mt-3">
+          <i class="bi bi-lock-fill me-1"></i>
+          Laporan sudah divalidasi dan tidak dapat diubah lagi dari aplikasi.
+        </div>
+      @endif
     </div>
 
-    @if ($this->terkunci())
-      <div class="alert alert-secondary py-2 small">
-        Laporan sudah divalidasi dan tidak dapat diubah lagi dari aplikasi.
-      </div>
-    @elseif ($this->barisSalah())
-      <div class="alert alert-danger py-2 small">
-        <i class="bi bi-exclamation-triangle-fill me-1"></i>
-        Qty pakai melebihi qty kirim pada
-        {{ implode(', ', array_column($this->barisSalah(), 'ref')) }}.
-        Betulkan lewat tombol Perbaiki — laporan belum bisa divalidasi.
-      </div>
-    @else
-      <div class="alert alert-warning py-2 small">
-        Periksa angkanya sekali lagi. Setelah divalidasi, laporan ini terkunci —
-        perubahan hanya bisa dilakukan lewat ERP.
-      </div>
+    @if (! $this->terkunci())
+      @if ($this->barisSalah())
+        <div class="alert alert-danger py-2 small">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          Qty pakai melebihi qty kirim pada
+          {{ implode(', ', array_column($this->barisSalah(), 'ref')) }}.
+          Betulkan lewat tombol Perbaiki — laporan belum bisa divalidasi.
+        </div>
+      @else
+        <div class="alert alert-warning py-2 small">
+          <i class="bi bi-exclamation-circle-fill me-1"></i>
+          Periksa angkanya sekali lagi. Setelah divalidasi, laporan ini terkunci —
+          perubahan hanya bisa dilakukan lewat ERP.
+        </div>
+      @endif
     @endif
   @endif
 
   <div class="bg-white rounded-4 shadow-sm overflow-hidden">
     <div class="tk-grid tk-head">
-      <span>Produk</span>
+      <span>Produk{{ $baris ? ' (' . count($baris) . ')' : '' }}</span>
       <span>Kirim</span>
       <span>Pakai</span>
       <span>Kembali</span>
@@ -56,14 +88,14 @@
     @forelse ($baris as $b)
       @php $salah = $b['pakai'] > $b['kirim'] || $b['pakai'] < 0; @endphp
 
-      <div class="tk-grid tk-row {{ $salah ? 'tk-salah' : '' }}" wire:key="pv-{{ $loop->index }}">
+      <div class="tk-grid tk-row {{ $salah ? 'tk-salah' : ($b['pakai'] > 0 ? 'pv-terpakai' : '') }}" wire:key="pv-{{ $loop->index }}">
         <div class="min-width-0">
           <div class="fc-kode text-truncate">{{ $b['ref'] }}</div>
           <div class="fc-nama">{{ $b['nama'] }}</div>
         </div>
 
         <span class="tk-angka">{{ $b['kirim'] }}</span>
-        <span class="tk-angka fw-bold">{{ $b['pakai'] }}</span>
+        <span class="tk-angka pv-pakai">{{ $b['pakai'] }}</span>
         <span class="tk-angka">{{ $b['kembali'] }}</span>
       </div>
     @empty
@@ -79,7 +111,7 @@
     <div class="fc-aksi mt-2">
       @if ($this->terkunci())
         <a href="{{ route('tindakan.detail', $tindakanId) }}" wire:navigate class="btn btn-outline-emas flex-fill">
-          Kembali
+          <i class="bi bi-arrow-left me-1"></i> Kembali
         </a>
 
         <a href="{{ route('tindakan.surat-jalan', $tindakanId) }}" class="btn btn-emas flex-fill">

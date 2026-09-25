@@ -430,6 +430,50 @@ input, select, textarea { font-size: 16px; }
 .tk-row.tk-salah .tk-angka { color: #C0392B; font-weight: 700; }
 .tk-row.tk-salah .fc-qty { border-color: #E74C3C; }
 
+/* ---------- Pratinjau laporan ---------- */
+/* Dibatasi lebarnya dengan alasan yang sama seperti .st-halaman: di layar lebar
+   angka Kirim/Pakai/Kembali terlempar ke tepi kanan, jauh dari nama barangnya. */
+.pv-halaman {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.pv-ringkas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .5rem;
+}
+
+.pv-kotak {
+  display: flex; flex-direction: column; align-items: center;
+  padding: .5rem .25rem;
+  border-radius: 12px;
+  background: #FBF7EF;
+}
+
+.pv-kotak span   { font-size: .68rem; font-weight: 700; color: #6b5a3e; }
+.pv-kotak strong { font-size: 1.25rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.pv-kotak-pakai  { background: var(--gold-050); }
+.pv-kotak-pakai strong { color: #8A6A2F; }
+
+.pv-catatan {
+  padding-top: .75rem;
+  border-top: 1px solid #F1EDE6;
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+/* Yang perlu diperiksa sebelum validasi adalah barang yang terpakai, jadi
+   barisnya diberi warna dan angka nol di kolom Pakai diredupkan. */
+.pv-pakai { color: var(--muted); }
+.tk-row.pv-terpakai { background: #FFFAF0; }
+.tk-row.pv-terpakai .pv-pakai { color: #8A6A2F; font-weight: 700; }
+
+@media (min-width: 768px) {
+  .pv-halaman .tk-grid { grid-template-columns: minmax(0, 1fr) 5rem 5rem 5rem; }
+}
+
 /* Pratinjau foto bukti tarik barang. Dibatasi tingginya supaya foto potret
    dari kamera ponsel tidak mendorong tombol aksi keluar layar. */
 .tk-bukti {
