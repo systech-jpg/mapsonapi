@@ -896,6 +896,11 @@ class TindakanController extends Controller
 
         DB::beginTransaction();
         try {
+            // Dua hitungan terpisah karena MySQL melaporkan baris yang BERUBAH,
+            // bukan yang cocok. Menyimpan ulang angka yang sama menghasilkan 0,
+            // dan dulu itu disangka "tidak ada baris yang cocok" -- petugas
+            // yang menekan Simpan untuk kedua kalinya ditolak 422 (TD/2609/00705).
+            $cocokCount = 0;
             $updatedCount = 0;
             foreach ($lines as $line) {
                 $qty_used = $line['qty_used'] ?? $line['qty'] ?? $line['used'] ?? null;
@@ -914,17 +919,19 @@ class TindakanController extends Controller
                     continue; // No identifier
                 }
 
-                $affected = $query->update([
+                $cocok = (clone $query)->count();
+                if (!$cocok) continue;
+
+                $cocokCount += $cocok;
+                $updatedCount += $query->update([
                     'qty_used' => (int) $qty_used
                 ]);
-                
-                if ($affected) $updatedCount++;
             }
             // Tidak ada satu baris pun yang cocok berarti identifier yang dikirim
             // client tidak dikenali di usage report ini. Dulu kondisi ini tetap
             // dijawab sukses, sehingga user melihat "berhasil disimpan" padahal
             // tidak ada yang tersimpan dan baru ketahuan dari halaman ERP.
-            if ($updatedCount === 0) {
+            if ($cocokCount === 0) {
                 DB::rollBack();
                 return $this->errorResponse(
                     'Tidak ada baris yang cocok di Usage Report ini. Pastikan det_id atau product_id yang dikirim benar.',
@@ -934,13 +941,17 @@ class TindakanController extends Controller
 
             DB::commit();
 
-            $this->logUsageActivity(
-                $usage->rowid,
-                'SAVE_LINES',
-                $user,
-                $updatedCount.' baris diperbarui',
-                0
-            );
+            // Simpan ulang tanpa perubahan tidak dicatat, supaya riwayat di
+            // ERP tidak dipenuhi baris "0 baris diperbarui".
+            if ($updatedCount > 0) {
+                $this->logUsageActivity(
+                    $usage->rowid,
+                    'SAVE_LINES',
+                    $user,
+                    $updatedCount.' baris diperbarui',
+                    0
+                );
+            }
 
             return $this->successResponse(['updated' => $updatedCount], 'Data pemakaian (Qty Used) berhasil disimpan sebagai Draft.');
         } catch (\Exception $e) {
