@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ForecastController;
 use App\Http\Controllers\Api\SphController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\QrLoginController;
+use App\Http\Controllers\Api\ServiceReportController;
 
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -37,6 +38,14 @@ Route::get('/test-schema', function() {
 
 // Endpoint untuk mengambil icon (publik, bisa dipanggil Glide tanpa header auth)
 Route::get('/android-icons/{filename}', [AndroidMenuController::class, 'serveIcon']);
+
+/*
+| Service Report: formulir dibuka dari kode QR statis oleh pelapor yang TIDAK
+| punya akun, jadi kirimannya tanpa API key. Penjaganya throttle per IP
+| (5 kiriman per menit) dan isian jebakan `situs` di controller.
+*/
+Route::post('/service-report/publik', [ServiceReportController::class, 'storePublic'])
+    ->middleware('throttle:5,1');
 
 // Rute yang butuh API Key
 Route::middleware('dolibarr.auth')->group(function () {
@@ -168,6 +177,12 @@ Route::middleware('dolibarr.auth')->group(function () {
     Route::get('/qr-login/{token}', [QrLoginController::class, 'info']);
     Route::post('/qr-login/{token}/approve', [QrLoginController::class, 'approve']);
     Route::post('/qr-login/{token}/reject', [QrLoginController::class, 'reject']);
+
+    // Service Report: daftar, detail, dan tindak lanjut oleh tim teknis.
+    Route::get('/service-report', [ServiceReportController::class, 'index']);
+    Route::get('/service-report/{id}', [ServiceReportController::class, 'show'])->whereNumber('id');
+    Route::put('/service-report/{id}', [ServiceReportController::class, 'update'])->whereNumber('id');
+    Route::get('/service-report/{id}/pdf', [ServiceReportController::class, 'pdf'])->whereNumber('id');
 });
 
 // TEST ROUTE

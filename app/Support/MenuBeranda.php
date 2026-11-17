@@ -42,6 +42,20 @@ class MenuBeranda
         'nav_sales_order' => ['route' => 'sales-order', 'icon' => 'bi-file-earmark-text-fill'],
         'nav_request_stock' => ['route' => 'forecast', 'icon' => 'bi-graph-up-arrow'],
         'nav_sph' => ['route' => 'sph', 'icon' => 'bi-file-earmark-ruled-fill'],
+        'nav_service_report' => ['route' => 'service-report', 'icon' => 'bi-tools'],
+    ];
+
+    /**
+     * Cadangan bila kolom `route` di ERP tidak cocok dengan PETA: dicocokkan
+     * lewat NAMA menunya (huruf kecil, spasi dirapikan).
+     *
+     * Ada karena kolom route di halaman menu ERP (user/android.php) berupa
+     * isian teks bebas tanpa daftar pilihan. Service Report didaftarkan di
+     * production tanpa ada padanan Android-nya, sehingga isinya tidak bisa
+     * ditebak dari sini — menu yang namanya cocok tetap muncul.
+     */
+    private const PETA_NAMA = [
+        'service report' => 'nav_service_report',
     ];
 
     /**
@@ -70,6 +84,11 @@ class MenuBeranda
         // order_index, kolom yang diatur di halaman menu ERP.
         foreach ($data as $baris) {
             $kunci = $baris['route'] ?? '';
+
+            if (! isset(self::PETA[$kunci])) {
+                $nama = strtolower(preg_replace('/\s+/', ' ', trim((string) ($baris['name'] ?? ''))));
+                $kunci = self::PETA_NAMA[$nama] ?? '';
+            }
 
             if (! isset(self::PETA[$kunci])) {
                 continue;

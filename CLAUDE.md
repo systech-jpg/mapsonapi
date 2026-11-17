@@ -90,6 +90,7 @@ dari session. Jadi web dan Android berbagi endpoint yang sama persis.
 | Stocktake | daftar dokumen, isi hitungan fisik (rak/tray/container), saring principal, cari + scan barcode, catatan per baris. Dokumen tetap dibuat, divalidasi, dan di-approve di ERP |
 | Chat | daftar percakapan + badge belum dibaca, chat personal & grup, kirim teks + lampiran, buat grup, realtime Pusher, notifikasi Web Push. Tambah anggota grup belum ada di UI (endpoint-nya ada) |
 | Login QR ERP | selesai. Halaman login ERP menampilkan QR, PWA memindainya dari layar Scan yang sama dengan scan produk, lalu menyetujui. Modul ERP-nya di `mapsonerp/custom/qrlogin/` |
+| Service Report | formulir publik tanpa login di `/service-report/form` (alamat statis untuk kode QR), daftar + saring status, detail, tindak lanjut (status, tanggal, bagian D, catatan), PDF meniru formulir F-03. Tanda tangan gambar belum ada (hanya nama) |
 
 Modul Android di `C:\android\warehousmap\app\src\main\java\com\mapson\id\ui\`
 adalah **acuan alur**. Baca dulu sebelum membuat modul baru — komentar di
@@ -531,6 +532,29 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     Label-labelnya harus sama persis dengan badge di
     `custom/tindakanmedis/usage.php`. Kalau ERP menambah status lagi, di
     `getUsageStatusLabel()` tempat menambahkannya.
+
+35. **Service Report: formulirnya TANPA login, dan tabelnya milik Laravel.**
+    Pelapor membuka `/service-report/form` dari kode QR yang dicetak di luar
+    aplikasi ini, jadi route itu sengaja di LUAR grup `api.auth` dan
+    halamannya berdiri sendiri (bukan `layouts.app`, yang menggambar tab bar
+    dan pendengar chat milik petugas). Kirimannya ke
+    `POST /api/service-report/publik`, juga tanpa API key.
+
+    Penjaganya: `throttle:5,1` per IP di API, `RateLimiter` per IP di
+    `FormPublik` (5 per 10 menit), dan isian jebakan `situs`. Karena panggilan
+    API datang dari server ini sendiri, `FormPublik` meneruskan IP pelapor lewat
+    `X-Forwarded-For` (terbaca karena `trustProxies('*')`); tanpa itu semua
+    pelapor berbagi satu jatah throttle milik 127.0.0.1.
+
+    Tabelnya `service_reports` (migration Laravel, PK `id`), bukan tabel
+    Dolibarr — ERP tidak punya modulnya. Baris alat (C) dan pemeriksaan (D)
+    disimpan JSON. Nomor `NNN/SR/MM/YYYY` dihitung dari banyaknya laporan bulan
+    itu dengan id sampai id ini, supaya kiriman bersamaan tidak bentrok.
+
+    Menu beranda: kolom `route` di halaman menu ERP (`user/android.php`) teks
+    bebas, dan Service Report tidak punya padanan Android. Jadi
+    `MenuBeranda` mengenalnya lewat route `nav_service_report` ATAU lewat nama
+    menu "Service Report" (`PETA_NAMA`).
 
 ---
 

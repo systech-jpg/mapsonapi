@@ -55,6 +55,16 @@ Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+/*
+| Formulir Service Report untuk pelapor — TANPA login.
+|
+| Alamatnya statis karena dicetak sebagai kode QR di luar aplikasi ini (ditempel
+| di alat / dibagikan ke rumah sakit). Jangan dipindah ke dalam grup api.auth:
+| pelapornya tidak punya akun. Daftar dan tindak lanjutnya ada di grup api.auth
+| di bawah, untuk tim teknis.
+*/
+Route::get('/service-report/form', fn () => view('service-report.publik'))->name('service-report.form');
+
 Route::middleware('api.auth')->group(function () {
     /*
     | Menu beranda mengikuti penugasan "ASSIGN USER" di halaman menu ERP —
@@ -300,6 +310,32 @@ Route::middleware('api.auth')->group(function () {
             'Content-Disposition' => 'inline; filename="sph-' . $id . '.pdf"',
         ]);
     })->whereNumber('id')->name('sph.pdf');
+
+    /*
+    | Service Report (tim teknis). Formulir pelapornya ada di luar grup ini,
+    | route service-report.form.
+    */
+    Route::get('/service-report', fn () => view('service-report.index'))->name('service-report');
+
+    Route::get('/service-report/{id}', fn (int $id) => view('service-report.detail', ['id' => $id]))
+        ->whereNumber('id')
+        ->name('service-report.detail');
+
+    // PDF diambil server ke server: browser tidak memegang api_key.
+    Route::get('/service-report/{id}/pdf', function (int $id) {
+        $response = \App\Support\Api::client()->get("/service-report/{$id}/pdf");
+
+        if ($response->failed() || ! str_contains(strtolower((string) $response->header('Content-Type')), 'pdf')) {
+            return redirect()->route('service-report.detail', $id)
+                ->with('galat', $response->json('message') ?? 'PDF service report belum bisa dibuat.');
+        }
+
+        return response($response->body(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => $response->header('Content-Disposition')
+                ?: 'inline; filename="service-report-' . $id . '.pdf"',
+        ]);
+    })->whereNumber('id')->name('service-report.pdf');
     Route::get('/scan', fn () => view('scan'))->name('scan');
     Route::get('/profil', fn () => view('profil'))->name('profil');
 });
