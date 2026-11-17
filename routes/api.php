@@ -40,8 +40,9 @@ Route::get('/test-schema', function() {
 Route::get('/android-icons/{filename}', [AndroidMenuController::class, 'serveIcon']);
 
 /*
-| Service Report: formulir dibuka dari kode QR statis oleh pelapor yang TIDAK
-| punya akun, jadi kirimannya tanpa API key. Penjaganya throttle per IP
+| Service Report: formulirnya project terpisah (mapsonservicereport, PHP native,
+| subdomain sendiri) yang dibuka pelapor TANPA akun dari kode QR, jadi
+| kirimannya tanpa API key. Penjaganya throttle per IP
 | (5 kiriman per menit) dan isian jebakan `situs` di controller.
 */
 Route::post('/service-report/publik', [ServiceReportController::class, 'storePublic'])

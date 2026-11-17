@@ -90,7 +90,7 @@ dari session. Jadi web dan Android berbagi endpoint yang sama persis.
 | Stocktake | daftar dokumen, isi hitungan fisik (rak/tray/container), saring principal, cari + scan barcode, catatan per baris. Dokumen tetap dibuat, divalidasi, dan di-approve di ERP |
 | Chat | daftar percakapan + badge belum dibaca, chat personal & grup, kirim teks + lampiran, buat grup, realtime Pusher, notifikasi Web Push. Tambah anggota grup belum ada di UI (endpoint-nya ada) |
 | Login QR ERP | selesai. Halaman login ERP menampilkan QR, PWA memindainya dari layar Scan yang sama dengan scan produk, lalu menyetujui. Modul ERP-nya di `mapsonerp/custom/qrlogin/` |
-| Service Report | formulir publik tanpa login di `/service-report/form` (alamat statis untuk kode QR), daftar + saring status, detail, tindak lanjut (status, tanggal, bagian D, catatan), PDF meniru formulir F-03. Tanda tangan gambar belum ada (hanya nama) |
+| Service Report | daftar + saring status, detail, tindak lanjut (status, tanggal, bagian D, catatan), PDF meniru formulir F-03. Formulir pelapornya project terpisah `mapsonservicereport` (PHP native). Tanda tangan gambar belum ada (hanya nama) |
 
 Modul Android di `C:\android\warehousmap\app\src\main\java\com\mapson\id\ui\`
 adalah **acuan alur**. Baca dulu sebelum membuat modul baru — komentar di
@@ -533,18 +533,26 @@ Jangan mengulang analisis dari nol untuk hal-hal berikut.
     `custom/tindakanmedis/usage.php`. Kalau ERP menambah status lagi, di
     `getUsageStatusLabel()` tempat menambahkannya.
 
-35. **Service Report: formulirnya TANPA login, dan tabelnya milik Laravel.**
-    Pelapor membuka `/service-report/form` dari kode QR yang dicetak di luar
-    aplikasi ini, jadi route itu sengaja di LUAR grup `api.auth` dan
-    halamannya berdiri sendiri (bukan `layouts.app`, yang menggambar tab bar
-    dan pendengar chat milik petugas). Kirimannya ke
-    `POST /api/service-report/publik`, juga tanpa API key.
+35. **Service Report: formulir pelapornya BUKAN di project ini.** Pelapor
+    membuka formulir di `C:\Users\USER\Herd\mapsonservicereport` (PHP 8.3
+    native, subdomain sendiri) dari kode QR, tanpa login. Project itu tidak
+    punya database; kirimannya diteruskan server ke server ke
+    `POST /api/service-report/publik` di sini — satu-satunya endpoint
+    Service Report tanpa API key. Formulir Livewire yang sempat ada di
+    `/service-report/form` sudah dihapus; jangan dihidupkan lagi.
 
-    Penjaganya: `throttle:5,1` per IP di API, `RateLimiter` per IP di
-    `FormPublik` (5 per 10 menit), dan isian jebakan `situs`. Karena panggilan
-    API datang dari server ini sendiri, `FormPublik` meneruskan IP pelapor lewat
+    Yang ada di sini hanya sisi tim teknis (menu Service Report: daftar,
+    detail, tindak lanjut, PDF) dan endpoint-nya. Mengubah aturan validasi
+    atau nama isian berarti mengubah DUA project: pesan galat dari API
+    ditampilkan apa adanya oleh formulir native, dan kunci galatnya
+    (`customer_nama`, `pemeriksaan.0.tahap`) dicocokkan ke kotak isiannya.
+
+    Penjaga endpoint publik: `throttle:5,1` per IP dan isian jebakan `situs`.
+    Kiriman datang dari server formulir, jadi IP pelapor diteruskan lewat
     `X-Forwarded-For` (terbaca karena `trustProxies('*')`); tanpa itu semua
-    pelapor berbagi satu jatah throttle milik 127.0.0.1.
+    pelapor berbagi satu jatah throttle milik server formulir. Bahasa
+    aplikasi masih `en`, jadi pesan galatnya ditulis sendiri di
+    `ServiceReportController::PESAN`.
 
     Tabelnya `service_reports` (migration Laravel, PK `id`), bukan tabel
     Dolibarr — ERP tidak punya modulnya. Baris alat (C) dan pemeriksaan (D)

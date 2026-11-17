@@ -13,8 +13,9 @@ use Illuminate\Support\Facades\Validator;
  * 007/01/TKS-MAP/F-03.
  *
  * Alurnya dua sisi:
- *  1. Pelapor membuka alamat statis (dari kode QR yang dicetak di luar
- *     aplikasi ini) lalu mengisi formulir TANPA login → storePublic().
+ *  1. Pelapor membuka formulir di project terpisah mapsonservicereport
+ *     (PHP native, subdomain sendiri, dibuka dari kode QR) TANPA login.
+ *     Project itu meneruskan kirimannya ke storePublic().
  *  2. Tim teknis masuk dengan akunnya, membuka menu Service Report, lalu
  *     menindaklanjuti → index(), show(), update(), pdf().
  *
@@ -43,10 +44,10 @@ class ServiceReportController extends Controller
     /**
      * Pesan galat validasi. Bahasa aplikasi ini masih 'en', sedangkan
      * formulir publik dibaca pelapor dari luar perusahaan — pesan bawaan
-     * Laravel ("The ... field is required.") tidak boleh sampai ke mereka.
-     * Dipakai juga oleh App\Livewire\ServiceReport\FormPublik.
+     * Laravel ("The ... field is required.") tidak boleh sampai ke mereka —
+     * mapsonservicereport menampilkan pesan ini apa adanya.
      */
-    public const PESAN = [
+    private const PESAN = [
         'required' => ':Attribute wajib diisi.',
         'min' => ':Attribute wajib diisi.',
         'email' => ':Attribute harus berupa alamat email yang benar.',
@@ -65,9 +66,10 @@ class ServiceReportController extends Controller
     /**
      * POST /api/service-report/publik — TANPA autentikasi.
      *
-     * Dijaga throttle per alamat IP di routes/api.php. Kiriman dari halaman
-     * PWA datang dari server ini sendiri, jadi halaman itu meneruskan IP asli
-     * pelapor lewat X-Forwarded-For (dibaca karena trustProxies '*').
+     * Dijaga throttle per alamat IP di routes/api.php. Kiriman datang dari
+     * server mapsonservicereport, bukan dari browser pelapor, jadi project itu
+     * meneruskan IP asli pelapor lewat X-Forwarded-For (dibaca karena
+     * trustProxies '*'). Tanpa itu semua pelapor berbagi satu jatah.
      */
     public function storePublic(Request $request)
     {

@@ -55,16 +55,6 @@ Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-/*
-| Formulir Service Report untuk pelapor — TANPA login.
-|
-| Alamatnya statis karena dicetak sebagai kode QR di luar aplikasi ini (ditempel
-| di alat / dibagikan ke rumah sakit). Jangan dipindah ke dalam grup api.auth:
-| pelapornya tidak punya akun. Daftar dan tindak lanjutnya ada di grup api.auth
-| di bawah, untuk tim teknis.
-*/
-Route::get('/service-report/form', fn () => view('service-report.publik'))->name('service-report.form');
-
 Route::middleware('api.auth')->group(function () {
     /*
     | Menu beranda mengikuti penugasan "ASSIGN USER" di halaman menu ERP —
@@ -312,8 +302,9 @@ Route::middleware('api.auth')->group(function () {
     })->whereNumber('id')->name('sph.pdf');
 
     /*
-    | Service Report (tim teknis). Formulir pelapornya ada di luar grup ini,
-    | route service-report.form.
+    | Service Report (tim teknis). Formulir pelapornya BUKAN di aplikasi ini,
+    | melainkan project terpisah (C:\Users\USER\Herd\mapsonservicereport,
+    | subdomain sendiri) yang mengirim ke POST /api/service-report/publik.
     */
     Route::get('/service-report', fn () => view('service-report.index'))->name('service-report');
 
