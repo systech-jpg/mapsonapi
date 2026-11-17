@@ -104,6 +104,7 @@ class FormPublik extends Component
             'tanggal_selesai' => ['nullable', 'date', $this->tanggal_mulai !== '' ? 'after_or_equal:tanggal_mulai' : 'nullable'],
             'pemeriksaan.0.tahap' => ['required', 'string', 'max:2000'],
         ], [
+            ...\App\Http\Controllers\Api\ServiceReportController::PESAN,
             'jenis.required' => 'Pilih minimal satu jenis pekerjaan.',
             'pemeriksaan.0.tahap.required' => 'Uraikan keluhan atau tahap pemeriksaan pada baris pertama.',
         ], [
@@ -111,6 +112,8 @@ class FormPublik extends Component
             'telepon' => 'nomor telepon',
             'contact_person' => 'contact person',
             'tanggal_selesai' => 'tanggal selesai',
+            'email' => 'email',
+            'pemeriksaan.0.tahap' => 'tahap pemeriksaan',
         ]);
 
         // Semua kiriman Livewire datang ke /livewire/update dan semua

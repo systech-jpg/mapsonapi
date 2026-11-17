@@ -40,6 +40,25 @@ class ServiceReportController extends Controller
         2 => 'Selesai',
     ];
 
+    /**
+     * Pesan galat validasi. Bahasa aplikasi ini masih 'en', sedangkan
+     * formulir publik dibaca pelapor dari luar perusahaan — pesan bawaan
+     * Laravel ("The ... field is required.") tidak boleh sampai ke mereka.
+     * Dipakai juga oleh App\Livewire\ServiceReport\FormPublik.
+     */
+    public const PESAN = [
+        'required' => ':Attribute wajib diisi.',
+        'min' => ':Attribute wajib diisi.',
+        'email' => ':Attribute harus berupa alamat email yang benar.',
+        'date' => ':Attribute harus berupa tanggal.',
+        'after_or_equal' => ':Attribute tidak boleh sebelum tanggal mulai.',
+        'max' => ':Attribute terlalu panjang.',
+        'in' => ':Attribute tidak dikenal.',
+        'array' => ':Attribute tidak sah.',
+        'string' => ':Attribute tidak sah.',
+        'integer' => ':Attribute tidak sah.',
+    ];
+
     /** Formulir kertas menyediakan enam baris; dua puluh cukup longgar. */
     private const MAKS_BARIS = 20;
 
@@ -58,7 +77,7 @@ class ServiceReportController extends Controller
             return $this->errorResponse('Kiriman ditolak.', 422);
         }
 
-        $validator = Validator::make($request->all(), $this->aturan(true), [], $this->namaIsian());
+        $validator = Validator::make($request->all(), $this->aturan(true), self::PESAN, $this->namaIsian());
 
         if ($validator->fails()) {
             return $this->errorResponse($validator->errors()->first(), 422, $validator->errors());
@@ -219,7 +238,7 @@ class ServiceReportController extends Controller
             'pemeriksaan' => ['nullable', 'array', 'max:'.self::MAKS_BARIS],
             'pemeriksaan.*.tahap' => ['nullable', 'string', 'max:2000'],
             'pemeriksaan.*.solusi' => ['nullable', 'string', 'max:2000'],
-        ], [], $this->namaIsian());
+        ], self::PESAN, $this->namaIsian());
 
         if ($validator->fails()) {
             return $this->errorResponse($validator->errors()->first(), 422, $validator->errors());
@@ -368,6 +387,7 @@ class ServiceReportController extends Controller
     {
         return [
             'jenis' => 'jenis pekerjaan',
+            'pemeriksaan' => 'tahap pemeriksaan / keluhan',
             'customer_nama' => 'nama customer',
             'customer_alamat' => 'alamat',
             'telepon' => 'nomor telepon',
